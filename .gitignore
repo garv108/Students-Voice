@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.DS_Store
+server/public
+*.tar.gz
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Drizzle
+drizzle/meta/
+
+# Misc
+*.swp
+*.swo
+Thumbs.db
