@@ -70,13 +70,6 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
-  }
-
   const port = parseInt(process.env.PORT || "3001", 10);
   httpServer.listen(
     {

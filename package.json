@@ -4,12 +4,9 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsx script/build.ts",
-    "start": "node index.js",
-    "check": "tsc",
-    "db:push": "drizzle-kit push"
-  },
+  "build": "tsc -p tsconfig.server.json",
+  "start": "node dist/server/index.js"
+},
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",

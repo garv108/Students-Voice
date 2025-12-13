@@ -12,10 +12,11 @@ import {
   type Reaction,
   type InsertReaction,
   type Like,
-  type AbuseLog,
+  type AbuseLog, 
+
   type ClusterGroup,
   calculateUrgency,
-} from "@shared/schema";
+} from "../shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, gte, count } from "drizzle-orm";
 import { scrypt, randomBytes } from "crypto";
