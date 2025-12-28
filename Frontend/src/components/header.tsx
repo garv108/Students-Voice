@@ -1,16 +1,16 @@
 import { Link, useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "../lib/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+} from "../components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { Badge } from "../components/ui/badge";
 import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard } from "lucide-react";
 import { useState } from "react";
 
@@ -93,7 +93,7 @@ export function Header() {
                   <Button variant="ghost" size="sm" className="gap-2" data-testid="button-user-menu">
                     <Avatar className="h-7 w-7">
                       <AvatarFallback className="text-xs">
-                        {user.username.slice(0, 2).toUpperCase()}
+                      {user?.username ? user.username.slice(0, 2).toUpperCase() : 'US'}
                       </AvatarFallback>
                     </Avatar>
                     <span className="hidden sm:inline">{user.username}</span>

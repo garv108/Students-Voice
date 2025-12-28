@@ -1,4 +1,4 @@
-import {
+﻿import {
   users,
   complaints,
   reactions,
@@ -274,7 +274,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(reactions.complaintId, complaintId))
       .groupBy(reactions.emoji);
     
-    return result.map(r => ({ emoji: r.emoji, count: Number(r.count) }));
+    return result.map((r: any) => ({ emoji: r.emoji, count: Number(r.count) }));
   }
 
   async getUserReactions(complaintId: string, userId: string): Promise<string[]> {
@@ -283,7 +283,7 @@ export class DatabaseStorage implements IStorage {
       .from(reactions)
       .where(and(eq(reactions.complaintId, complaintId), eq(reactions.userId, userId)));
     
-    return result.map(r => r.emoji);
+    return result.map((r: any) => r.emoji);
   }
 
   async createAbuseLog(log: Omit<AbuseLog, "id" | "createdAt">): Promise<AbuseLog> {
@@ -381,16 +381,17 @@ export class DatabaseStorage implements IStorage {
 
     return {
       totalComplaints: allComplaints.length,
-      pendingComplaints: allComplaints.filter(c => c.status === "pending").length,
-      solvedComplaints: allComplaints.filter(c => c.solved).length,
-      urgentCount: allComplaints.filter(c => c.urgency === "urgent").length,
-      criticalCount: allComplaints.filter(c => c.urgency === "critical" || c.urgency === "top_priority").length,
-      emergencyCount: allComplaints.filter(c => c.urgency === "emergency").length,
+      pendingComplaints: allComplaints.filter((c: any) => c.status === "pending").length,
+      solvedComplaints: allComplaints.filter((c: any) => c.solved).length,
+      urgentCount: allComplaints.filter((c: any) => c.urgency === "urgent").length,
+      criticalCount: allComplaints.filter((c: any) => c.urgency === "critical" || c.urgency === "top_priority").length,
+      emergencyCount: allComplaints.filter((c: any) => c.urgency === "emergency").length,
       totalUsers: allUsers.length,
-      bannedUsers: allUsers.filter(u => u.bannedUntil && new Date(u.bannedUntil) > now).length,
+      bannedUsers: allUsers.filter((u: any) => u.bannedUntil && new Date(u.bannedUntil) > now).length,
       abuseLogs: allAbuseLogs.length,
     };
   }
 }
 
 export const storage = new DatabaseStorage();
+

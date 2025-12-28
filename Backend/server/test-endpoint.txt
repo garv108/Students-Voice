@@ -1,0 +1,8 @@
+﻿// Add to server/index.ts right after CORS middleware
+app.get("/api/test", (req, res) => {
+  res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "healthy", server: "Student Complaint System" });
+});

@@ -4,7 +4,7 @@ import session from "express-session";
 import { storage } from "./storage";
 import { detectProfanity, getBanExpiration } from "./profanity";
 import { analyzeComplaint } from "./openai";
-import { insertUserSchema, loginSchema, insertComplaintSchema } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertComplaintSchema } from "../shared/schema";
 import { z } from "zod";
 
 declare module "express-session" {
