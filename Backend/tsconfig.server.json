@@ -1,6 +1,6 @@
 ﻿{
   "include": ["server/**/*", "shared/**/*"],
-  "exclude": ["node_modules", "client", "dist", "**/*.d.ts", "**/vite.config.ts"],
+  "exclude": ["node_modules", "client", "dist", "**/*.d.ts"],
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "./",
@@ -14,13 +14,6 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["shared/*"]
-    },
-    "strictNullChecks": false,
-    "noImplicitAny": false,
-    "noImplicitThis": false,
-    "alwaysStrict": false,
-    "exactOptionalPropertyTypes": false,
-    "noUncheckedIndexedAccess": false,
-    "noEmitOnError": false
+    }
   }
 }
