@@ -1,0 +1,15 @@
+﻿// Instead of .pick(), create the schema manually for problematic ones
+export const insertUserSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  email: z.string().email("Invalid email"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+export const insertComplaintSchema = z.object({
+  originalText: z.string().min(1, "Complaint text is required"),
+});
+
+export const insertReactionSchema = z.object({
+  complaintId: z.string().min(1, "Complaint ID is required"),
+  emoji: z.string().min(1, "Emoji is required"),
+});

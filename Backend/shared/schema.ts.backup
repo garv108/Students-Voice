@@ -1,4 +1,4 @@
-﻿import { sql, relations } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, boolean, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -129,10 +129,10 @@ export const clusterGroupsRelations = relations(clusterGroups, ({ many }) => ({
   complaints: many(complaints),
 }));
 
-export const insertUserSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  email: z.string().email("Invalid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+export const insertUserSchema = createInsertSchema(users).pick({
+  username: true,
+  email: true,
+  password: true,
 });
 
 export const loginSchema = z.object({
@@ -140,13 +140,13 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-export const insertComplaintSchema = z.object({
-  originalText: z.string().min(1, "Complaint text is required"),
+export const insertComplaintSchema = createInsertSchema(complaints).pick({
+  originalText: true,
 });
 
-export const insertReactionSchema = z.object({
-  complaintId: z.string().min(1, "Complaint ID is required"),
-  emoji: z.string().min(1, "Emoji is required"),
+export const insertReactionSchema = createInsertSchema(reactions).pick({
+  complaintId: true,
+  emoji: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -177,4 +177,3 @@ export function calculateUrgency(count: number): typeof urgencyEnum.enumValues[n
   if (count >= 10) return "urgent";
   return "normal";
 }
-

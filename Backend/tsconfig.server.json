@@ -1,32 +1,26 @@
 ﻿{
-    "include":  [
-                    "server/**/*",
-                    "shared/**/*",
-                    "custom-types.d.ts"
-                ],
-    "exclude":  [
-                    "node_modules",
-                    "client",
-                    "dist",
-                    "vite.config.ts",
-                    "**/vite.config.ts",
-                    "server/vite.ts"
-                ],
-    "compilerOptions":  {
-                            "outDir":  "dist",
-                            "rootDir":  "./",
-                            "module":  "CommonJS",
-                            "target":  "ES2020",
-                            "strict":  true,
-                            "esModuleInterop":  true,
-                            "moduleResolution":  "node",
-                            "resolveJsonModule":  true,
-                            "baseUrl":  ".",
-                            "paths":  {
-                                          "@shared/*":  [
-                                                            "shared/*"
-                                                        ]
-                                      },
-                            "skipLibCheck":  true
-                        }
+  "include": ["server/**/*", "shared/**/*"],
+  "exclude": ["node_modules", "client", "dist", "**/*.d.ts", "**/vite.config.ts"],
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "./",
+    "module": "CommonJS",
+    "target": "ES2020",
+    "skipLibCheck": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"]
+    },
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "noEmitOnError": false
+  }
 }

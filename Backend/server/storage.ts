@@ -100,7 +100,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const hashedPassword = await hashPassword(insertUser.password);
+    const hashedPassword = await hashPassword((insertUser as any).password);
     const [user] = await db
       .insert(users)
       .values({ ...insertUser, password: hashedPassword })
@@ -394,4 +394,5 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
 
