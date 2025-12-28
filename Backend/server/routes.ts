@@ -7,11 +7,6 @@ import { analyzeComplaint } from "./openai";
 import { insertUserSchema, loginSchema, insertComplaintSchema } from "../shared/schema";
 import { z } from "zod";
 
-declare module "express-session" {
-  interface SessionData {
-    userId: string;
-  }
-}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!(req as any).session.userId) {
@@ -458,6 +453,9 @@ export async function registerRoutes(
 
   return httpServer;
 }
+
+
+
 
 
 
