@@ -8,7 +8,7 @@ dotenv_1.default.config();
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const routes_1 = require("./routes");
-const static_1 = require("./static");
+// import { serveStatic } from "./static"; // Disabled for production
 const http_1 = require("http");
 const app = (0, express_1.default)();
 // CORS Configuration
@@ -101,7 +101,7 @@ const httpServer = (0, http_1.createServer)(app);
 (0, routes_1.registerRoutes)(httpServer, app);
 // Serve static files in production
 if (process.env.NODE_ENV === "production") {
-    (0, static_1.serveStatic)(app);
+    // serveStatic(app); // Disabled for production
 }
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -4,7 +4,7 @@ dotenv.config();
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
+// import { serveStatic } from "./static"; // Disabled for production
 import { createServer } from "http";
 
 const app = express();
@@ -111,7 +111,7 @@ registerRoutes(httpServer, app);
 
 // Serve static files in production
 if (process.env.NODE_ENV === "production") {
-  serveStatic(app);
+  // serveStatic(app); // Disabled for production
 }
 
 // Error handling middleware
@@ -127,6 +127,8 @@ httpServer.listen(PORT, () => {
   console.log(`✅ CORS configured for: ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
 });
+
+
 
 
 
