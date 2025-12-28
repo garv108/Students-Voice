@@ -65,7 +65,7 @@ app.get("/api/health", (req, res) => {
     app.post("/api/auth/login", (req, res) => {
       console.log("🔐 Mock login endpoint called");
       // Set session
-      req.session.userId = "dev-user-123";
+      (req as any).session.userId = "dev-user-123";
       res.json({
         user: {
           id: "dev-user-123",
@@ -81,7 +81,7 @@ app.get("/api/health", (req, res) => {
     app.post("/api/auth/signup", (req, res) => {
       console.log("📝 Mock signup endpoint called");
       // Set session
-      req.session.userId = "dev-user-123";
+      (req as any).session.userId = "dev-user-123";
       res.json({
         user: {
           id: "dev-user-123",
@@ -127,6 +127,7 @@ httpServer.listen(PORT, () => {
   console.log(`✅ CORS configured for: ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
 });
+
 
 
 

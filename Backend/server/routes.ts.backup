@@ -14,17 +14,17 @@ declare module "express-session" {
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!(req as any).session.userId) {
+  if (!req.session.userId) {
     return res.status(401).json({ message: "Authentication required" });
   }
   next();
 }
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!(req as any).session.userId) {
+  if (!req.session.userId) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const user = await storage.getUser((req as any).session.userId);
+  const user = await storage.getUser(req.session.userId);
   if (!user || (user.role !== "admin" && user.role !== "moderator")) {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -63,7 +63,7 @@ export async function registerRoutes(
       }
 
       const user = await storage.createUser(data);
-      (req as any).session.userId = user.id;
+      req.session.userId = user.id;
 
       res.json({ user: { ...user, password: undefined } });
     } catch (error) {
@@ -84,7 +84,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid username or password" });
       }
 
-      (req as any).session.userId = user.id;
+      req.session.userId = user.id;
       res.json({ user: { ...user, password: undefined } });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -96,7 +96,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    (req as any).session.destroy((err) => {
+    req.session.destroy((err) => {
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
       }
@@ -105,13 +105,13 @@ export async function registerRoutes(
   });
 
   app.get("/api/auth/me", async (req, res) => {
-    if (!(req as any).session.userId) {
+    if (!req.session.userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await storage.getUser((req as any).session.userId);
+    const user = await storage.getUser(req.session.userId);
     if (!user) {
-      (req as any).session.destroy(() => {});
+      req.session.destroy(() => {});
       return res.status(401).json({ message: "User not found" });
     }
 
@@ -120,7 +120,7 @@ export async function registerRoutes(
 
   app.post("/api/complaints", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUser((req as any).session.userId!);
+      const user = await storage.getUser(req.session.userId!);
       if (!user) {
         return res.status(401).json({ message: "User not found" });
       }
@@ -192,7 +192,7 @@ export async function registerRoutes(
     try {
       const complaintsData = await storage.getLeaderboardComplaints();
       const stats = await storage.getAdminStats();
-      const userId = (req as any).session.userId;
+      const userId = req.session.userId;
 
       const complaintsWithReactions = await Promise.all(
         complaintsData.map(async (complaint) => {
@@ -239,7 +239,7 @@ export async function registerRoutes(
   app.post("/api/complaints/:id/like", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req as any).session.userId!;
+      const userId = req.session.userId!;
 
       await storage.addLike(id, userId, true);
       res.json({ success: true });
@@ -252,7 +252,7 @@ export async function registerRoutes(
   app.post("/api/complaints/:id/dislike", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req as any).session.userId!;
+      const userId = req.session.userId!;
 
       await storage.addLike(id, userId, false);
       res.json({ success: true });
@@ -266,7 +266,7 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const { emoji } = req.body;
-      const userId = (req as any).session.userId!;
+      const userId = req.session.userId!;
 
       if (!emoji || typeof emoji !== "string") {
         return res.status(400).json({ message: "Emoji required" });
@@ -283,7 +283,7 @@ export async function registerRoutes(
   app.put("/api/complaints/:id/solve", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req as any).session.userId!;
+      const userId = req.session.userId!;
 
       const existing = await storage.getComplaint(id);
       if (!existing) {
@@ -313,7 +313,7 @@ export async function registerRoutes(
   app.delete("/api/complaints/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req as any).session.userId!;
+      const userId = req.session.userId!;
 
       const complaint = await storage.getComplaint(id);
       if (!complaint) {
@@ -375,7 +375,7 @@ export async function registerRoutes(
         updates.status = status;
         if (status === "solved") {
           updates.solved = true;
-          updates.solvedBy = (req as any).session.userId;
+          updates.solvedBy = req.session.userId;
           updates.solvedAt = new Date();
           updates.urgency = "normal";
           updates.similarComplaintsCount = 0;
@@ -458,6 +458,4 @@ export async function registerRoutes(
 
   return httpServer;
 }
-
-
 

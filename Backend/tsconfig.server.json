@@ -1,6 +1,6 @@
 ﻿{
   "include": ["server/**/*", "shared/**/*"],
-  "exclude": ["node_modules", "client", "dist", "**/*.d.ts"],
+  "exclude": ["node_modules"],
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "./",
@@ -9,11 +9,6 @@
     "skipLibCheck": true,
     "strict": false,
     "esModuleInterop": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@shared/*": ["shared/*"]
-    }
+    "moduleResolution": "node"
   }
 }
