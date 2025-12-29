@@ -41,50 +41,13 @@ app.use(session({
   }
 }));
 
-// Setup endpoint for creating first admin user
-app.post("/api/setup/create-admin", async (req, res) => {
-  try {
-    console.log("🔧 Setup endpoint called");
-    
-    // Check if admin already exists
-    const existingUsers = await db.select().from(users).where(eq(users.username, "admin"));
-    
-    if (existingUsers.length > 0) {
-      return res.json({ 
-        success: false, 
-        message: "Admin user already exists",
-        username: "admin"
-      });
-    }
-    
-    // Create admin with default password
-    const hashedPassword = await hashPassword("admin123");
-    const [admin] = await db.insert(users).values({
-      username: "admin",
-      email: "admin@example.com",
-      password: hashedPassword,
-      role: "admin"
-    }).returning();
-    
-    console.log("✅ Admin user created");
-    res.json({ 
-      success: true, 
-      message: "Admin user created successfully",
-      user: {
-        username: "admin",
-        password: "admin123", // Only shown once
-        role: "admin",
-        note: "Change password immediately after first login"
-      }
-    });
-  } catch (error) {
-    console.error("❌ Setup error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to create admin user",
-      details: error instanceof Error ? error.message : String(error)
-    });
-  }
+// SECURED: Setup endpoint disabled for production
+app.post("/api/setup/create-admin", (req, res) => {
+  res.status(403).json({ 
+    success: false, 
+    message: "Setup endpoint disabled for security in production.",
+    note: "If you need to reset admin, run direct SQL or use signup endpoint."
+  });
 });
 
 // Test endpoints
@@ -99,6 +62,50 @@ app.get("/api/health", (req, res) => {
 // DEVELOPMENT MOCK ENDPOINTS - Add these BEFORE real routes
 if (process.env.NODE_ENV === "development") {
   console.log("⚠️ Development mode: Mock endpoints enabled");
+  
+  // Development-only setup endpoint
+  app.post("/api/setup/create-admin", async (req, res) => {
+    try {
+      console.log("🔧 Development setup endpoint called");
+      
+      const existingUsers = await db.select().from(users).where(eq(users.username, "admin"));
+      
+      if (existingUsers.length > 0) {
+        return res.json({ 
+          success: false, 
+          message: "Admin user already exists",
+          username: "admin"
+        });
+      }
+      
+      const hashedPassword = await hashPassword("admin123");
+      const [admin] = await db.insert(users).values({
+        username: "admin",
+        email: "admin@example.com",
+        password: hashedPassword,
+        role: "admin"
+      }).returning();
+      
+      console.log("✅ Admin user created (development)");
+      res.json({ 
+        success: true, 
+        message: "Admin user created successfully",
+        user: {
+          username: "admin",
+          password: "admin123",
+          role: "admin",
+          note: "Change password immediately"
+        }
+      });
+    } catch (error) {
+      console.error("❌ Setup error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: "Failed to create admin user",
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
   
   // Mock leaderboard endpoint
   app.get("/api/leaderboard", (req, res) => {
@@ -187,4 +194,5 @@ httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ CORS configured for: ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
+  console.log(`🔒 Setup endpoint: ${process.env.NODE_ENV === 'production' ? 'DISABLED for security' : 'ENABLED for development'}`);
 });

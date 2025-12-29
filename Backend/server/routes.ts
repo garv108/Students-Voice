@@ -6,7 +6,25 @@ import { detectProfanity, getBanExpiration } from "./profanity";
 import { analyzeComplaint } from "./openai";
 import { insertUserSchema, loginSchema, insertComplaintSchema } from "../shared/schema";
 import { z } from "zod";
+import { scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
+import { db } from "./db";
+import { users } from "../shared/schema";
+import { eq } from "drizzle-orm";
 
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
+
+async function comparePasswords(supplied: string, stored: string): Promise<boolean> {
+  const [hashedPassword, salt] = stored.split(".");
+  const buf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  return buf.toString("hex") === hashedPassword;
+}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!(req as any).session.userId) {
@@ -91,12 +109,56 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    (req as any).session.destroy((err) => {
+    (req as any).session.destroy((err: any) => {
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
       }
       res.json({ message: "Logged out successfully" });
     });
+  });
+
+  app.post("/api/auth/change-password", async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const userId = (req as any).session.userId;
+
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current and new password required" });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ message: "New password must be at least 6 characters" });
+      }
+
+      // Get user
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Verify current password
+      const isValid = await comparePasswords(currentPassword, user.password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(newPassword);
+
+      // Update password in database
+      await db.update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId));
+
+      res.json({ success: true, message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Password change error:", error);
+      res.status(500).json({ message: "Failed to change password" });
+    }
   });
 
   app.get("/api/auth/me", async (req, res) => {
@@ -453,9 +515,3 @@ export async function registerRoutes(
 
   return httpServer;
 }
-
-
-
-
-
-
