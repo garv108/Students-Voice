@@ -73,20 +73,20 @@ app.use(session({
 }));
 
 // Add middleware to log sessions for debugging
-app.use((req, res, next) => {
-  console.log(`📝 ${req.method} ${req.path} - Session ID: ${req.sessionID?.substring(0, 10)}...`);
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const sessionId = (req as any).sessionID;
+  console.log(`📝 ${req.method} ${req.path} - Session ID: ${sessionId?.substring(0, 10)}...`);
   next();
 });
 
 // SECURED: Setup endpoint disabled for production
-app.post("/api/setup/create-admin", (req, res) => {
+app.post("/api/setup/create-admin", (req: Request, res: Response) => {
   res.status(403).json({ 
     success: false, 
     message: "Setup endpoint disabled for security in production.",
     note: "If you need to reset admin, run direct SQL or use signup endpoint."
   });
 });
-
 // Test endpoints
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
