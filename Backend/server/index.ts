@@ -22,24 +22,61 @@ async function hashPassword(password: string): Promise<string> {
 
 const app = express();
 
-// CORS Configuration
+// CORS Configuration - Fixed for production
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:5173",
+  "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
+  "https://students-voice.vercel.app" // Add your main domain if different
+];
+
+// Remove duplicates from array
+const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean))];
+console.log("🌐 Allowed CORS origins:", uniqueOrigins);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) {
+      console.log("🔓 No origin - allowing request");
+      return callback(null, true);
+    }
+    
+    if (uniqueOrigins.includes(origin)) {
+      console.log(`✅ CORS allowed for: ${origin}`);
+      callback(null, true);
+    } else {
+      console.log(`❌ CORS blocked: ${origin}`);
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+    }
+  },
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Set-Cookie'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 
-// Session middleware (for development)
+// Session middleware (for development - will be overridden by routes.ts in production)
 import session from "express-session";
 app.use(session({
-  secret: process.env.SESSION_SECRET || "dev-secret-key-123456",
+  secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false, // Security: don't save empty sessions
   cookie: {
     secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 1000 * 60 * 60 * 24 // 24 hours
-  }
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Required for cross-site cookies
+    httpOnly: true, // Prevents XSS attacks
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    domain: process.env.NODE_ENV === "production" ? ".onrender.com" : undefined
+  },
+  name: 'studentvoice.sid', // Unique session name
+  proxy: process.env.NODE_ENV === "production", // Trust proxy in production
 }));
+
+// Add middleware to log sessions for debugging
+app.use((req, res, next) => {
+  console.log(`📝 ${req.method} ${req.path} - Session ID: ${req.sessionID?.substring(0, 10)}...`);
+  next();
+});
 
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req, res) => {
@@ -192,7 +229,6 @@ const PORT = process.env.PORT || 3001;
 
 httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`✅ CORS configured for: ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
   console.log(`🔒 Setup endpoint: ${process.env.NODE_ENV === 'production' ? 'DISABLED for security' : 'ENABLED for development'}`);
 });

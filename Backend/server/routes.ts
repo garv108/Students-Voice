@@ -1,6 +1,5 @@
 ﻿import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import session from "express-session";
 import { storage } from "./storage";
 import { detectProfanity, getBanExpiration } from "./profanity";
 import { analyzeComplaint } from "./openai";
@@ -48,18 +47,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || "studentvoice-secret-key",
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: process.env.NODE_ENV === "production",
-        httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      },
-    })
-  );
+  // Session middleware is now in index.ts to avoid duplicates
 
   app.post("/api/auth/signup", async (req, res) => {
     try {
