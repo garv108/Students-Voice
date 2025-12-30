@@ -177,6 +177,16 @@ console.log("🔒 Rate limiting enabled");
     proxy: process.env.NODE_ENV === "production",
   };
 
+// Debug: Check why MemoryStore is being used
+console.log("=== SESSION CONFIG DEBUG ===");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
+console.log("DATABASE_URL sample:", process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 20) + "..." : "none");
+console.log("SESSION_SECRET exists:", !!process.env.SESSION_SECRET);
+console.log("SESSION_SECRET length:", process.env.SESSION_SECRET?.length || 0);
+console.log("Session store configured:", sessionConfig.store ? "PostgreSQL" : "MemoryStore");
+console.log("=== END DEBUG ===");
+
   // For development, fall back to MemoryStore if no DATABASE_URL
   if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
     console.warn('⚠️ No DATABASE_URL found, using MemoryStore for sessions (not for production!)');
