@@ -16,6 +16,12 @@ import { eq } from "drizzle-orm";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
+// ========== EARLY DEBUG ==========
+console.log("🔴 EARLY DEBUG: Server starting");
+console.log("File version: 2025-12-31-session-fix");
+console.log("Current time:", new Date().toISOString());
+// ========== END EARLY DEBUG ==========
+
 const scryptAsync = promisify(scrypt);
 
 async function hashPassword(password: string): Promise<string> {
@@ -30,7 +36,7 @@ const app = express();
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:5173",
   "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-    "https://students-voice-bay.vercel.app",
+    "https://students-voice-bay.vercel.app","https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
   ];
 
 // Remove duplicates from array
@@ -68,7 +74,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
+      connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app","https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
     
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],

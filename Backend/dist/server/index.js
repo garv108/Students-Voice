@@ -20,6 +20,11 @@ const schema_1 = require("../shared/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const crypto_1 = require("crypto");
 const util_1 = require("util");
+// ========== EARLY DEBUG ==========
+console.log("🔴 EARLY DEBUG: Server starting");
+console.log("File version: 2025-12-31-session-fix");
+console.log("Current time:", new Date().toISOString());
+// ========== END EARLY DEBUG ==========
 const scryptAsync = (0, util_1.promisify)(crypto_1.scrypt);
 async function hashPassword(password) {
     const salt = (0, crypto_1.randomBytes)(16).toString("hex");
@@ -31,7 +36,7 @@ const app = (0, express_1.default)();
 const allowedOrigins = [
     process.env.FRONTEND_URL || "http://localhost:5173",
     "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-    "https://students-voice-bay.vercel.app",
+    "https://students-voice-bay.vercel.app", "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
 ];
 // Remove duplicates from array
 const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean))];
@@ -67,7 +72,7 @@ app.use((0, helmet_1.default)({
             scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
+            connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app", "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"],
             upgradeInsecureRequests: [],
@@ -86,6 +91,26 @@ console.log("🔒 Helmet.js security headers enabled");
 // Compression middleware
 app.use((0, compression_1.default)());
 console.log("⚡ Compression enabled");
+// Additional security headers middleware
+app.use((req, res, next) => {
+    // Prevent caching of sensitive data (API responses)
+    if (req.path.startsWith('/api')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Surrogate-Control', 'no-store');
+    }
+    // Additional XSS protection (redundant with Helmet but extra safety)
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Referrer policy for privacy
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Permissions policy - restrict browser features
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+    // Expect-CT header (phasing out but still useful)
+    res.setHeader('Expect-CT', 'max-age=86400, enforce');
+    next();
+});
+console.log("🔒 Additional security headers enabled");
 // Rate limiting configuration
 const generalLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -122,12 +147,6 @@ const sessionConfig = {
     secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
     resave: false,
     saveUninitialized: false,
-    store: new PostgresSessionStore({
-        conString: process.env.DATABASE_URL,
-        createTableIfMissing: true,
-        tableName: 'user_sessions',
-        pruneSessionInterval: 60 * 60, // Clean up expired sessions every hour
-    }),
     cookie: {
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
@@ -137,13 +156,36 @@ const sessionConfig = {
     name: 'studentvoice.sid',
     proxy: process.env.NODE_ENV === "production",
 };
-// For development, fall back to MemoryStore if no DATABASE_URL
-if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
-    console.warn('⚠️ No DATABASE_URL found, using MemoryStore for sessions (not for production!)');
-    delete sessionConfig.store;
+// Debug before setting store
+console.log("=== SESSION CONFIG DEBUG ===");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
+if (process.env.DATABASE_URL) {
+    console.log("DATABASE_URL sample:", process.env.DATABASE_URL.substring(0, 30) + "...");
+}
+console.log("SESSION_SECRET exists:", !!process.env.SESSION_SECRET);
+if (process.env.SESSION_SECRET) {
+    console.log("SESSION_SECRET length:", process.env.SESSION_SECRET.length);
+}
+// Set PostgreSQL store if DATABASE_URL exists and looks valid
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgresql://')) {
+    console.log("✅ Setting up PostgreSQL session store");
+    sessionConfig.store = new PostgresSessionStore({
+        conString: process.env.DATABASE_URL,
+        createTableIfMissing: true,
+        tableName: 'user_sessions',
+        pruneSessionInterval: 60 * 60,
+    });
+}
+else {
+    console.warn("⚠️ No valid DATABASE_URL, using MemoryStore");
+    if (process.env.NODE_ENV === 'production') {
+        console.error("🚨 PRODUCTION WARNING: Using MemoryStore! Add DATABASE_URL to Render environment.");
+    }
 }
 app.use((0, express_session_1.default)(sessionConfig));
-console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore (dev only)'}`);
+console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore'}`);
+console.log("=== END DEBUG ===");
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req, res) => {
     res.status(403).json({
