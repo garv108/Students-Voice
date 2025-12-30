@@ -26,8 +26,9 @@ const app = express();
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:5173",
   "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-  "https://students-voice.vercel.app" // Add your main domain if different
-];
+  "https://students-voice.vercel.app",
+    "https://students-voice-bay.vercel.app",
+  ];
 
 // Remove duplicates from array
 const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean))];
