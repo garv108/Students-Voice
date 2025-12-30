@@ -154,47 +154,54 @@ app.use("/api", generalLimiter); // Apply to all other API routes
 
 console.log("🔒 Rate limiting enabled");
 
-  // PostgreSQL session store configuration
-  const PostgresSessionStore = pgSession(session);
+// PostgreSQL session store configuration
+const PostgresSessionStore = pgSession(session);
 
-  const sessionConfig: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
-    resave: false,
-    saveUninitialized: false,
-    store: new PostgresSessionStore({
-      conString: process.env.DATABASE_URL,
-      createTableIfMissing: true,
-      tableName: 'user_sessions',
-      pruneSessionInterval: 60 * 60, // Clean up expired sessions every hour
-    }),
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    },
-    name: 'studentvoice.sid',
-    proxy: process.env.NODE_ENV === "production",
-  };
+const sessionConfig: session.SessionOptions = {
+  secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
+  name: 'studentvoice.sid',
+  proxy: process.env.NODE_ENV === "production",
+};
 
-// Debug: Check why MemoryStore is being used
+// Debug before setting store
 console.log("=== SESSION CONFIG DEBUG ===");
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
-console.log("DATABASE_URL sample:", process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 20) + "..." : "none");
+if (process.env.DATABASE_URL) {
+  console.log("DATABASE_URL sample:", process.env.DATABASE_URL.substring(0, 30) + "...");
+}
 console.log("SESSION_SECRET exists:", !!process.env.SESSION_SECRET);
-console.log("SESSION_SECRET length:", process.env.SESSION_SECRET?.length || 0);
-console.log("Session store configured:", sessionConfig.store ? "PostgreSQL" : "MemoryStore");
-console.log("=== END DEBUG ===");
+if (process.env.SESSION_SECRET) {
+  console.log("SESSION_SECRET length:", process.env.SESSION_SECRET.length);
+}
 
-  // For development, fall back to MemoryStore if no DATABASE_URL
-  if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
-    console.warn('⚠️ No DATABASE_URL found, using MemoryStore for sessions (not for production!)');
-    delete sessionConfig.store;
+// Set PostgreSQL store if DATABASE_URL exists and looks valid
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgresql://')) {
+  console.log("✅ Setting up PostgreSQL session store");
+  sessionConfig.store = new PostgresSessionStore({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: true,
+    tableName: 'user_sessions',
+    pruneSessionInterval: 60 * 60,
+  });
+} else {
+  console.warn("⚠️ No valid DATABASE_URL, using MemoryStore");
+  if (process.env.NODE_ENV === 'production') {
+    console.error("🚨 PRODUCTION WARNING: Using MemoryStore! Add DATABASE_URL to Render environment.");
   }
+}
 
-  app.use(session(sessionConfig));
-  console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore (dev only)'}`);
+app.use(session(sessionConfig));
+console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore'}`);
+console.log("=== END DEBUG ===");
 
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req: Request, res: Response) => {
