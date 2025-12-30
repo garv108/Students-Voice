@@ -6,12 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const helmet_1 = __importDefault(require("helmet"));
-const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const compression_1 = __importDefault(require("compression"));
-const express_session_1 = __importDefault(require("express-session"));
-const connect_pg_simple_1 = __importDefault(require("connect-pg-simple"));
 const routes_1 = require("./routes");
 // import { serveStatic } from "./static"; // Disabled for production
 const http_1 = require("http");
@@ -83,67 +79,28 @@ app.use(helmet_1.default.ieNoOpen()); // IE security
 app.use(helmet_1.default.frameguard({ action: "deny" })); // Prevent clickjacking
 app.use(helmet_1.default.hidePoweredBy()); // Hide Express signature
 console.log("🔒 Helmet.js security headers enabled");
-// Compression middleware
-app.use((0, compression_1.default)());
-console.log("⚡ Compression enabled");
-// Rate limiting configuration
-const generalLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
-    message: { error: "Too many requests, please try again later." },
-    standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-    legacyHeaders: false, // Disable `X-RateLimit-*` headers
-});
-const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Only 5 login/signup attempts per windowMs
-    message: { error: "Too many authentication attempts, please try again later." },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true, // Don't count successful logins
-});
-const adminLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // More generous for admin operations
-    message: { error: "Too many admin requests, please try again later." },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-// Apply rate limiting
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/signup", authLimiter);
-app.use("/api/auth/change-password", authLimiter);
-app.use("/api/admin", adminLimiter);
-app.use("/api", generalLimiter); // Apply to all other API routes
-console.log("🔒 Rate limiting enabled");
-// PostgreSQL session store configuration
-const PostgresSessionStore = (0, connect_pg_simple_1.default)(express_session_1.default);
-const sessionConfig = {
+// Session middleware (for development - will be overridden by routes.ts in production)
+const express_session_1 = __importDefault(require("express-session"));
+app.use((0, express_session_1.default)({
     secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
     resave: false,
-    saveUninitialized: false,
-    store: new PostgresSessionStore({
-        conString: process.env.DATABASE_URL,
-        createTableIfMissing: true,
-        tableName: 'user_sessions',
-        pruneSessionInterval: 60 * 60, // Clean up expired sessions every hour
-    }),
+    saveUninitialized: false, // Security: don't save empty sessions
     cookie: {
         secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        httpOnly: true,
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Required for cross-site cookies
+        httpOnly: true, // Prevents XSS attacks
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        domain: process.env.NODE_ENV === "production" ? ".onrender.com" : undefined
     },
-    name: 'studentvoice.sid',
-    proxy: process.env.NODE_ENV === "production",
-};
-// For development, fall back to MemoryStore if no DATABASE_URL
-if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
-    console.warn('⚠️ No DATABASE_URL found, using MemoryStore for sessions (not for production!)');
-    delete sessionConfig.store;
-}
-app.use((0, express_session_1.default)(sessionConfig));
-console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore (dev only)'}`);
+    name: 'studentvoice.sid', // Unique session name
+    proxy: process.env.NODE_ENV === "production", // Trust proxy in production
+}));
+// Add middleware to log sessions for debugging
+app.use((req, res, next) => {
+    const sessionId = req.sessionID;
+    console.log(`📝 ${req.method} ${req.path} - Session ID: ${sessionId?.substring(0, 10)}...`);
+    next();
+});
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req, res) => {
     res.status(403).json({

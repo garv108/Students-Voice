@@ -1,0 +1,14 @@
+﻿{
+  "include": ["server/**/*", "shared/**/*"],
+  "exclude": ["node_modules"],
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "./",
+    "module": "CommonJS",
+    "target": "ES2020",
+    "skipLibCheck": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "moduleResolution": "node"
+  }
+}

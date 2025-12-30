@@ -1,8 +1,12 @@
 ﻿import dotenv from "dotenv";
 dotenv.config();
-
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
+import compression from "compression";
+import session from "express-session"; 
+import pgSession from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 // import { serveStatic } from "./static"; // Disabled for production
 import { createServer } from "http";
@@ -26,7 +30,6 @@ const app = express();
 const allowedOrigins = [
   process.env.FRONTEND_URL || "http://localhost:5173",
   "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-  "https://students-voice.vercel.app",
     "https://students-voice-bay.vercel.app",
   ];
 
@@ -55,30 +58,133 @@ app.use(cors({
   exposedHeaders: ['Set-Cookie'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
-
-// Session middleware (for development - will be overridden by routes.ts in production)
-import session from "express-session";
-app.use(session({
-  secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
-  resave: false,
-  saveUninitialized: false, // Security: don't save empty sessions
-  cookie: {
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Required for cross-site cookies
-    httpOnly: true, // Prevents XSS attacks
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    domain: process.env.NODE_ENV === "production" ? ".onrender.com" : undefined
+// Security middleware - Helmet.js
+app.use(helmet({
+  // Basic security headers
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
+    
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
   },
-  name: 'studentvoice.sid', // Unique session name
-  proxy: process.env.NODE_ENV === "production", // Trust proxy in production
+  crossOriginEmbedderPolicy: false, // Required for some third-party services
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resources
 }));
 
-// Add middleware to log sessions for debugging
+// Additional security headers
+app.use(helmet.xssFilter()); // XSS protection
+app.use(helmet.noSniff()); // Prevent MIME type sniffing
+app.use(helmet.ieNoOpen()); // IE security
+app.use(helmet.frameguard({ action: "deny" })); // Prevent clickjacking
+app.use(helmet.hidePoweredBy()); // Hide Express signature
+
+console.log("🔒 Helmet.js security headers enabled");
+
+// Compression middleware
+app.use(compression());
+console.log("⚡ Compression enabled");
+
+// Additional security headers middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
-  const sessionId = (req as any).sessionID;
-  console.log(`📝 ${req.method} ${req.path} - Session ID: ${sessionId?.substring(0, 10)}...`);
+  // Prevent caching of sensitive data (API responses)
+  if (req.path.startsWith('/api')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  }
+  
+  // Additional XSS protection (redundant with Helmet but extra safety)
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Referrer policy for privacy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Permissions policy - restrict browser features
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  
+  // Expect-CT header (phasing out but still useful)
+  res.setHeader('Expect-CT', 'max-age=86400, enforce');
+  
   next();
 });
+
+console.log("🔒 Additional security headers enabled");
+
+// Rate limiting configuration
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { error: "Too many requests, please try again later." },
+  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
+  legacyHeaders: false, // Disable `X-RateLimit-*` headers
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Only 5 login/signup attempts per windowMs
+  message: { error: "Too many authentication attempts, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful logins
+});
+
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // More generous for admin operations
+  message: { error: "Too many admin requests, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiting
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/signup", authLimiter);
+app.use("/api/auth/change-password", authLimiter);
+app.use("/api/admin", adminLimiter);
+app.use("/api", generalLimiter); // Apply to all other API routes
+
+console.log("🔒 Rate limiting enabled");
+
+  // PostgreSQL session store configuration
+  const PostgresSessionStore = pgSession(session);
+
+  const sessionConfig: session.SessionOptions = {
+    secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
+    resave: false,
+    saveUninitialized: false,
+    store: new PostgresSessionStore({
+      conString: process.env.DATABASE_URL,
+      createTableIfMissing: true,
+      tableName: 'user_sessions',
+      pruneSessionInterval: 60 * 60, // Clean up expired sessions every hour
+    }),
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    },
+    name: 'studentvoice.sid',
+    proxy: process.env.NODE_ENV === "production",
+  };
+
+  // For development, fall back to MemoryStore if no DATABASE_URL
+  if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
+    console.warn('⚠️ No DATABASE_URL found, using MemoryStore for sessions (not for production!)');
+    delete sessionConfig.store;
+  }
+
+  app.use(session(sessionConfig));
+  console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore (dev only)'}`);
 
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req: Request, res: Response) => {

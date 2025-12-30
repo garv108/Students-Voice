@@ -1,6 +1,6 @@
 ﻿import dotenv from "dotenv";
 dotenv.config();
-
+import helmet from "helmet";
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { registerRoutes } from "./routes";
@@ -54,6 +54,35 @@ app.use(cors({
   exposedHeaders: ['Set-Cookie'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
+// Security middleware - Helmet.js
+app.use(helmet({
+  // Basic security headers
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
+    
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Required for some third-party services
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resources
+}));
+
+// Additional security headers
+app.use(helmet.xssFilter()); // XSS protection
+app.use(helmet.noSniff()); // Prevent MIME type sniffing
+app.use(helmet.ieNoOpen()); // IE security
+app.use(helmet.frameguard({ action: "deny" })); // Prevent clickjacking
+app.use(helmet.hidePoweredBy()); // Hide Express signature
+
+console.log("🔒 Helmet.js security headers enabled");
 
 // Session middleware (for development - will be overridden by routes.ts in production)
 import session from "express-session";

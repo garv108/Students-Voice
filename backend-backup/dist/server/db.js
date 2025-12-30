@@ -210,123 +210,46 @@ if (process.env.NODE_ENV === "development" && (!process.env.DATABASE_URL || proc
     };
 }
 else {
-    // Production/Development with real database
+    // Production mode - require real database
     if (!process.env.DATABASE_URL) {
-        console.warn("⚠️ DATABASE_URL not set. Using mock database for development.");
-        // Use mock database
-        exports.pool = pool = {
-            connect: async () => {
-                console.log("Mock database connect called");
-                return {
-                    release: () => { },
-                    query: async () => ({ rows: [] }),
-                };
-            },
-            query: async (text, params) => {
-                console.log(`Mock query: ${text.substring(0, 50)}...`);
-                return { rows: [], rowCount: 0 };
-            },
-            end: async () => {
-                console.log("Mock database connection ended");
-            },
-            on: (event, callback) => pool,
-        };
-        exports.db = db = {
-            select: () => ({
-                from: () => ({
-                    orderBy: () => Promise.resolve([]),
-                    where: () => Promise.resolve([]),
-                    limit: () => Promise.resolve([]),
-                    leftJoin: () => ({
-                        orderBy: () => Promise.resolve([]),
-                        where: () => Promise.resolve([])
-                    })
-                })
-            }),
-            insert: () => ({
-                values: () => Promise.resolve({ rows: [] })
-            }),
-            update: () => ({
-                set: () => ({
-                    where: () => Promise.resolve({ rows: [] })
-                })
-            }),
-            delete: () => ({
-                where: () => Promise.resolve({ rows: [] })
-            })
-        };
+        throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
     }
-    else {
-        // Real database connection
-        console.log("🔗 Connecting to PostgreSQL database...");
-        exports.pool = pool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 2000,
-        });
-        exports.db = db = (0, node_postgres_1.drizzle)(pool, { schema });
-        // Test connection and create tables
-        pool.connect(async (err, client, release) => {
-            if (err) {
-                console.error("❌ Database connection error:", err.message);
-            }
-            else {
+    exports.pool = pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000,
+    });
+    exports.db = db = (0, node_postgres_1.drizzle)(pool, { schema });
+    // Test connection and create tables
+    pool.connect(async (err, client, release) => {
+        if (err) {
+            console.error("❌ Database connection error:", err.message);
+        }
+        else {
+            try {
+                console.log("✅ Database connected successfully");
+                await createTablesIfNotExist(client);
+                // Check if any users exist
                 try {
-                    console.log("✅ Database connected successfully");
-                    await createTablesIfNotExist(client);
-                    // Check if any users exist
-                    try {
-                        const result = await client.query("SELECT COUNT(*) as count FROM users");
-                        const userCount = parseInt(result.rows[0].count);
-                        console.log(`👤 Found ${userCount} users in database`);
-                        if (userCount === 0) {
-                            console.log("ℹ️ No users found. Please create first user via signup endpoint or setup");
-                        }
-                    }
-                    catch (error) {
-                        const errorMessage = error instanceof Error ? error.message : String(error);
-                        console.log("ℹ️ Could not check user count, tables might be fresh:", errorMessage);
+                    const result = await client.query("SELECT COUNT(*) as count FROM users");
+                    const userCount = parseInt(result.rows[0].count);
+                    console.log(`👤 Found ${userCount} users in database`);
+                    if (userCount === 0) {
+                        console.log("ℹ️ No users found. Please create first user via signup endpoint or setup");
                     }
                 }
                 catch (error) {
-                    console.error("❌ Database initialization error:", error);
-                }
-                finally {
-                    release();
-                }
-            }
-        });
-    }
-}
-// Test connection and create tables
-pool.connect(async (err, client, release) => {
-    if (err) {
-        console.error("❌ Database connection error:", err.message);
-    }
-    else {
-        try {
-            console.log("✅ Database connected successfully");
-            await createTablesIfNotExist(client);
-            // Check if any users exist
-            try {
-                const result = await client.query("SELECT COUNT(*) as count FROM users");
-                const userCount = parseInt(result.rows[0].count);
-                console.log(`👤 Found ${userCount} users in database`);
-                if (userCount === 0) {
-                    console.log("ℹ️ No users found. Please create first user via signup endpoint or setup");
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.log("ℹ️ Could not check user count, tables might be fresh:", errorMessage);
                 }
             }
             catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.log("ℹ️ Could not check user count, tables might be fresh:", errorMessage);
+                console.error("❌ Database initialization error:", error);
+            }
+            finally {
+                release();
             }
         }
-        catch (error) {
-            console.error("❌ Database initialization error:", error);
-        }
-        finally {
-            release();
-        }
-    }
-});
+    });
+}
