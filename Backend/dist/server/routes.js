@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerRoutes = registerRoutes;
 const storage_1 = require("./storage");
 const profanity_1 = require("./profanity");
-const openai_1 = require("./openai");
+const gemini_1 = require("./gemini");
 const schema_1 = require("../shared/schema");
 const zod_1 = require("zod");
 const crypto_1 = require("crypto");
@@ -164,7 +164,7 @@ async function registerRoutes(httpServer, app) {
                     bannedUntil: banUntil,
                 });
             }
-            const analysis = await (0, openai_1.analyzeComplaint)(data.originalText);
+            const analysis = await (0, gemini_1.analyzeComplaint)(data.originalText);
             const cluster = await storage_1.storage.getOrCreateCluster(analysis.keywords);
             const complaint = await storage_1.storage.createComplaint({
                 userId: user.id,

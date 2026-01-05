@@ -2,7 +2,7 @@
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { detectProfanity, getBanExpiration } from "./profanity";
-import { analyzeComplaint } from "./openai";
+import { analyzeComplaint } from "./gemini";
 import { insertUserSchema, loginSchema, insertComplaintSchema } from "../shared/schema";
 import { z } from "zod";
 import { scrypt, randomBytes } from "crypto";

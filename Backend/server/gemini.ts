@@ -1,7 +1,8 @@
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Initialize Gemini AI
+const genAI = process.env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
 
 export interface AnalysisResult {
@@ -10,6 +11,7 @@ export interface AnalysisResult {
   keywords: string[];
 }
 
+// Keep the same helper functions from openai.ts
 function extractKeywords(text: string): string[] {
   const stopWords = new Set([
     "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -71,7 +73,9 @@ function determineSeverity(text: string): AnalysisResult["severity"] {
 }
 
 export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
-  if (!openai) {
+  // Fallback if no Gemini API key
+  if (!genAI) {
+    console.log("⚠️ No Gemini API key, using fallback analysis");
     return {
       summary: simpleSummarize(text),
       severity: determineSeverity(text),
@@ -80,53 +84,79 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
   }
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are an AI assistant that analyzes student complaints. 
-Given a complaint text, provide:
-1. A brief summary (max 100 characters)
-2. A severity rating: good, average, poor, bad, worst, or critical
-3. Up to 5 keywords for clustering
-
-Respond in JSON format:
-{
-  "summary": "Brief summary here",
-  "severity": "average",
-  "keywords": ["keyword1", "keyword2"]
-}`
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 200,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (content) {
-      const parsed = JSON.parse(content);
-      return {
-        summary: parsed.summary || simpleSummarize(text),
-        severity: parsed.severity || "average",
-        keywords: parsed.keywords || extractKeywords(text),
-      };
+    // Use Gemini Flash (fast & cheap)
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const prompt = `
+    Analyze this student complaint and provide:
+    1. A brief summary (max 100 characters)
+    2. Severity rating: good, average, poor, bad, worst, or critical
+    3. Up to 5 keywords for clustering
+    
+    Complaint: "${text}"
+    
+    Respond in this exact JSON format:
+    {
+      "summary": "Brief summary here",
+      "severity": "average",
+      "keywords": ["keyword1", "keyword2"]
     }
-  } catch (error) {
-    console.error("OpenAI analysis failed, using fallback:", error);
-  }
+    `;
 
-  return {
-    summary: simpleSummarize(text),
-    severity: determineSeverity(text),
-    keywords: extractKeywords(text),
-  };
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+    
+    // Try to parse JSON response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          summary: parsed.summary || simpleSummarize(text),
+          severity: parsed.severity || "average",
+          keywords: parsed.keywords || extractKeywords(text),
+        };
+      } catch (error) {
+        console.log("❌ Failed to parse Gemini JSON, using fallback");
+      }
+    }
+    
+    // If JSON parsing failed, try to extract from text
+    let summary = simpleSummarize(text);
+    let severity = determineSeverity(text);
+    let keywords = extractKeywords(text);
+    
+    // Try to extract summary from response
+    const summaryMatch = response.match(/summary[:\s]+([^\n]+)/i);
+    if (summaryMatch) summary = summaryMatch[1].trim().slice(0, 100);
+    
+    // Try to extract severity
+    const severityMatch = response.match(/severity[:\s]+(good|average|poor|bad|worst|critical)/i);
+    if (severityMatch) severity = severityMatch[1].toLowerCase() as any;
+    
+    // Try to extract keywords
+    const keywordsMatch = response.match(/keywords[:\s]+\[([^\]]+)\]/i);
+    if (keywordsMatch) {
+      keywords = keywordsMatch[1]
+        .split(',')
+        .map(k => k.trim().replace(/['"]/g, ''))
+        .filter(k => k);
+    }
+    
+    return { summary, severity, keywords };
+    
+  } catch (error) {
+    console.error("❌ Gemini analysis failed:", error);
+    // Fallback to simple analysis
+    return {
+      summary: simpleSummarize(text),
+      severity: determineSeverity(text),
+      keywords: extractKeywords(text),
+    };
+  }
 }
 
+// Keep the same function for compatibility
 export function calculateKeywordOverlap(keywords1: string[], keywords2: string[]): number {
   if (!keywords1.length || !keywords2.length) return 0;
   
