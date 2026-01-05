@@ -5,7 +5,7 @@
     "dev": "tsx server/index.ts",
     "build": "tsc -p tsconfig.server.json && echo 'Build complete'",
     "start": "node dist/server/index.js",
-    "db:push": "drizzle-kit push"  },
+    "db:push": "npx drizzle-kit push"  },
   "dependencies": {
     "compression": "^1.8.1",
     "connect-pg-simple": "^10.0.0",
