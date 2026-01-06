@@ -1,7 +1,0 @@
-﻿
-// Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({ status: "healthy", timestamp: new Date().toISOString() });
-});
-
-// DEVELOPMENT MOCK ENDPOINTS - Add these BEFORE real routes

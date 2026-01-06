@@ -1,4 +1,4 @@
-﻿﻿import dotenv from "dotenv";
+﻿import dotenv from "dotenv";
 dotenv.config();
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -240,13 +240,12 @@ const sessionConfig: session.SessionOptions = {
   saveUninitialized: false,
  
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: true ,
+    sameSite: "none",
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/',
-    domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN || '.onrender.com' : undefined,
-  },
+    },
   name: 'studentvoice.sid',
   proxy: true,
 };
