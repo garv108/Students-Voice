@@ -369,19 +369,7 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
       { id: "3", name: "Test User 3", score: 70, complaints: 3 }
     ]);
   });
-  
-  // Mock auth/me endpoint
-  app.get("/api/auth/me", (req, res) => {
-    console.log("👤 Mock auth/me endpoint called");
-    res.json({
-      id: "dev-user-123",
-      email: "dev@example.com",
-      name: "Development User",
-      role: "student",
-      createdAt: new Date().toISOString()
-    });
-  });
-  
+    
   // Mock login endpoint
   app.post("/api/auth/login", (req, res) => {
     console.log("🔐 Mock login endpoint called");
