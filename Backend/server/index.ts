@@ -1,4 +1,4 @@
-﻿import dotenv from "dotenv";
+﻿﻿import dotenv from "dotenv";
 dotenv.config();
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -22,12 +22,28 @@ console.log("File version: 2025-12-31-session-fix");
 console.log("Current time:", new Date().toISOString());
 // ========== END EARLY DEBUG ==========
 
+// Type declarations
+declare global {
+  namespace Express {
+    interface Request {
+      rawBody?: string;
+    }
+  }
+}
+
 const scryptAsync = promisify(scrypt);
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
+}
+
+// Validate required environment variables
+const sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret && process.env.NODE_ENV === 'production') {
+  console.error("🚨 FATAL ERROR: SESSION_SECRET environment variable is required for production");
+  process.exit(1);
 }
 
 const app = express();
@@ -53,15 +69,19 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, postman)
     if (!origin) {
-      console.log("🔓 No origin - allowing request");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🔓 No origin - allowing request");
+      }
       return callback(null, true);
     }
     
     if (uniqueOrigins.includes(origin)) {
-      console.log(`✅ CORS allowed for: ${origin}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ CORS allowed for: ${origin}`);
+      }
       callback(null, true);
     } else {
-      console.log(`❌ CORS blocked: ${origin}`);
+      console.warn(`❌ CORS blocked: ${origin}`);
       callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
     }
   },
@@ -70,6 +90,7 @@ app.use(cors({
   exposedHeaders: ['Set-Cookie'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
+
 // Security middleware - Helmet.js
 app.use(helmet({
   // Basic security headers
@@ -79,12 +100,8 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "http://localhost:5173", 
-        "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-        "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app", 
-        "https://students-voice-bay.vercel.app"],
-    
+      imgSrc: ["'self'", "data:", "https:", "http:"],
+      connectSrc: ["'self'", ...uniqueOrigins],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
@@ -107,6 +124,50 @@ console.log("🔒 Helmet.js security headers enabled");
 app.use(compression());
 console.log("⚡ Compression enabled");
 
+// JSON parsing with validation for invalid JSON
+app.use(express.json({
+  verify: (req: any, res: Response, buf: Buffer) => {
+    try { 
+      if (buf && buf.length > 0) {
+        JSON.parse(buf.toString()); 
+      }
+    } catch(e: any) { 
+      console.error("❌ Invalid JSON received:", {
+        url: req.url,
+        method: req.method,
+        contentLength: buf?.length || 0,
+        contentType: req.headers['content-type'],
+        first100Chars: buf?.toString().substring(0, 100),
+        error: e.message
+      });
+      
+      // Store the raw buffer for debugging
+      req.rawBody = buf?.toString() || '';
+    }
+  }
+}));
+
+app.use(express.urlencoded({ extended: true }));
+
+// JSON parsing error handler
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    console.error('JSON Syntax Error:', {
+      url: req.url,
+      method: req.method,
+      error: err.message,
+      rawBody: req.rawBody?.substring(0, 200)
+    });
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid JSON format',
+      message: 'Please check your request body for JSON syntax errors',
+      help: 'Ensure your request has proper JSON syntax with double quotes for keys and values'
+    });
+  }
+  next(err);
+});
+
 // Additional security headers middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
   // Prevent caching of sensitive data (API responses)
@@ -116,9 +177,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Expires', '0');
     res.setHeader('Surrogate-Control', 'no-store');
   }
-  
-  // Additional XSS protection (redundant with Helmet but extra safety)
-  res.setHeader('X-XSS-Protection', '1; mode=block');
   
   // Referrer policy for privacy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -145,11 +203,15 @@ const generalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Only 5 login/signup attempts per windowMs
+  max: process.env.NODE_ENV === 'production' ? 10 : 100, // More lenient in dev
   message: { error: "Too many authentication attempts, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful logins
+  keyGenerator: (req) => {
+    // Use IP + user-agent for better rate limiting
+    return `${req.ip}-${req.headers['user-agent']}`;
+  }
 });
 
 const adminLimiter = rateLimit({
@@ -178,13 +240,13 @@ const sessionConfig: session.SessionOptions = {
   saveUninitialized: false,
  
   cookie: {
-  secure: true, 
-  sameSite: 'none',
-  httpOnly: true,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  path: '/',
-  domain: '.onrender.com',
-},
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/',
+    domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN || '.onrender.com' : undefined,
+  },
   name: 'studentvoice.sid',
   proxy: true,
 };
@@ -221,6 +283,26 @@ app.use(session(sessionConfig));
 console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore'}`);
 console.log("=== END DEBUG ===");
 
+// Health check endpoints
+app.get("/api/health", (req, res) => {
+  res.json({ status: "healthy", server: "Student Complaint System" });
+});
+
+app.get("/api/health/db", async (req, res) => {
+  try {
+    await db.execute('SELECT 1');
+    res.json({ status: "healthy", database: "connected" });
+  } catch (error) {
+    console.error("Database health check failed:", error);
+    res.status(500).json({ status: "unhealthy", database: "disconnected" });
+  }
+});
+
+// Test endpoint
+app.get("/api/test", (req, res) => {
+  res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
+});
+
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req: Request, res: Response) => {
   res.status(403).json({ 
@@ -229,17 +311,9 @@ app.post("/api/setup/create-admin", (req: Request, res: Response) => {
     note: "If you need to reset admin, run direct SQL or use signup endpoint."
   });
 });
-// Test endpoints
-app.get("/api/test", (req, res) => {
-  res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
-});
-
-app.get("/api/health", (req, res) => {
-  res.json({ status: "healthy", server: "Student Complaint System" });
-});
 
 // DEVELOPMENT MOCK ENDPOINTS - Add these BEFORE real routes
-if (process.env.NODE_ENV === "development") {
+if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS === "true") {
   console.log("⚠️ Development mode: Mock endpoints enabled");
   
   // Development-only setup endpoint
@@ -347,10 +421,6 @@ if (process.env.NODE_ENV === "development") {
   });
 }
 
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 const httpServer = createServer(app);
 
 // Register API routes - pass both httpServer and app
@@ -361,10 +431,30 @@ if (process.env.NODE_ENV === "production") {
   // serveStatic(app); // Disabled for production
 }
 
-// Error handling middleware
+// Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  console.error('🚨 Unhandled Error:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+  
+  res.status(500).json({ 
+    success: false,
+    error: process.env.NODE_ENV === 'production' ? "Something went wrong!" : err.message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
+
+// 404 handler
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    path: req.url
+  });
 });
 
 const PORT = process.env.PORT || 3001;
@@ -373,4 +463,5 @@ httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
   console.log(`🔒 Setup endpoint: ${process.env.NODE_ENV === 'production' ? 'DISABLED for security' : 'ENABLED for development'}`);
+  console.log(`🔍 JSON validation: ${process.env.NODE_ENV === 'production' ? 'ENABLED' : 'ENABLED with verbose logging'}`);
 });
