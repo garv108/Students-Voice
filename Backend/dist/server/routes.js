@@ -149,9 +149,9 @@ async function registerRoutes(httpServer, app) {
                 });
             }
             const data = schema_1.insertComplaintSchema.parse(req.body);
-            const profanityCheck = (0, profanity_1.detectProfanity)(data.originalText);
+            const profanityCheck = await (0, profanity_1.detectProfanity)(data.originalText);
             if (profanityCheck.isAbusive) {
-                const banUntil = (0, profanity_1.getBanExpiration)(48);
+                const banUntil = (0, profanity_1.getBanExpiration)(3);
                 await storage_1.storage.updateUserBan(user.id, banUntil);
                 await storage_1.storage.createAbuseLog({
                     userId: user.id,
@@ -417,7 +417,7 @@ async function registerRoutes(httpServer, app) {
         try {
             const { id } = req.params;
             const { hours } = req.body;
-            const banUntil = (0, profanity_1.getBanExpiration)(hours || 48);
+            const banUntil = (0, profanity_1.getBanExpiration)(hours || 3);
             await storage_1.storage.updateUserBan(id, banUntil);
             res.json({ success: true, bannedUntil: banUntil });
         }

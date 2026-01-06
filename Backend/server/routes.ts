@@ -179,9 +179,9 @@ export async function registerRoutes(
 
       const data = insertComplaintSchema.parse(req.body);
 
-      const profanityCheck = detectProfanity(data.originalText);
+  const profanityCheck = await detectProfanity(data.originalText);
       if (profanityCheck.isAbusive) {
-        const banUntil = getBanExpiration(48);
+        const banUntil = getBanExpiration(3);
         await storage.updateUserBan(user.id, banUntil);
 
         await storage.createAbuseLog({
@@ -481,7 +481,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const { hours } = req.body;
 
-      const banUntil = getBanExpiration(hours || 48);
+      const banUntil = getBanExpiration(hours || 3);
       await storage.updateUserBan(id, banUntil);
       res.json({ success: true, bannedUntil: banUntil });
     } catch (error) {

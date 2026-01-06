@@ -34,10 +34,15 @@ const app = express();
 
 // CORS Configuration - Fixed for production
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "http://localhost:5173",
+  // Split FRONTEND_URL if it contains multiple origins
+  ...(process.env.FRONTEND_URL ? 
+      process.env.FRONTEND_URL.split(',').map(s => s.trim()) : 
+      ["http://localhost:5173"]
+  ),
   "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-    "https://students-voice-bay.vercel.app","https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
-  ];
+  "https://students-voice-bay.vercel.app",
+  "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
+];
 
 // Remove duplicates from array
 const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean))];
@@ -74,7 +79,10 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "http://localhost:5173", "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app","https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app", "https://students-voice-bay.vercel.app"],
+      connectSrc: ["'self'", "http://localhost:5173", 
+        "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
+        "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app", 
+        "https://students-voice-bay.vercel.app"],
     
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
@@ -167,14 +175,17 @@ const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
   resave: false,
   saveUninitialized: false,
+ 
   cookie: {
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  },
+  secure: true, 
+  sameSite: 'none',
+  httpOnly: true,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/',
+  domain: '.onrender.com',
+},
   name: 'studentvoice.sid',
-  proxy: process.env.NODE_ENV === "production",
+  proxy: true,
 };
 
 // Debug before setting store

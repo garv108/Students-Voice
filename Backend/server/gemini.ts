@@ -139,8 +139,8 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
     if (keywordsMatch) {
       keywords = keywordsMatch[1]
         .split(',')
-        .map(k => k.trim().replace(/['"]/g, ''))
-        .filter(k => k);
+        .map((k: string) => k.trim().replace(/['"]/g, ''))
+        .filter((k: string) => k);
     }
     
     return { summary, severity, keywords };
@@ -170,4 +170,66 @@ export function calculateKeywordOverlap(keywords1: string[], keywords2: string[]
   
   const totalUnique = new Set([...Array.from(set1), ...Array.from(set2)]).size;
   return totalUnique > 0 ? overlap / totalUnique : 0;
+}
+
+/**
+ * Detect abusive content using Gemini AI (multilingual)
+ */
+export async function detectAbuseWithAI(text: string): Promise<{
+  isAbusive: boolean;
+  detectedWords: string[];
+  confidence: number;
+}> {
+  try {
+    if (!genAI || !process.env.GEMINI_API_KEY) {
+      return { isAbusive: false, detectedWords: [], confidence: 0 };
+    }
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const prompt = `
+    Analyze this text for abusive, harassing, or inappropriate content in ANY language (English, Hindi, Urdu, etc.).
+    
+    Text: "${text}"
+    
+    Respond in JSON format:
+    {
+      "isAbusive": true/false,
+      "detectedWords": ["word1", "word2"] (empty array if not abusive),
+      "confidence": 0.95 (number between 0-1),
+      "reason": "Brief explanation"
+    }
+    
+    Consider:
+    1. Profanity/swear words in any language
+    2. Personal attacks, insults
+    3. Threats, harassment
+    4. Hate speech, discrimination
+    5. Sexual harassment content
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+    
+    // Parse JSON response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          isAbusive: parsed.isAbusive === true,
+          detectedWords: Array.isArray(parsed.detectedWords) ? parsed.detectedWords : [],
+          confidence: parsed.confidence || 0,
+        };
+      } catch (e) {
+        console.log("Failed to parse AI response:", e);
+      }
+    }
+    
+    return { isAbusive: false, detectedWords: [], confidence: 0 };
+    
+  } catch (error) {
+    console.error("AI abuse detection failed:", error);
+    return { isAbusive: false, detectedWords: [], confidence: 0 };
+  }
 }
