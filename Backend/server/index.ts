@@ -31,6 +31,7 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 // CORS Configuration - Fixed for production
 const allowedOrigins = [
@@ -43,9 +44,9 @@ const allowedOrigins = [
   "https://students-voice-bay.vercel.app",
   "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
 ];
-
-// Remove duplicates from array
-const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean))];
+// Remove duplicates AND trailing slashes from array
+const normalizeOrigin = (origin: string) => origin.replace(/\/$/, ''); // Remove trailing slash
+const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean).map(normalizeOrigin))];
 console.log("🌐 Allowed CORS origins:", uniqueOrigins);
 
 app.use(cors({
