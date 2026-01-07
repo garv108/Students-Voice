@@ -5,10 +5,9 @@ import rateLimit from "express-rate-limit";
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
 import compression from "compression";
-import session from "express-session"; 
+import session from "express-session";
 import pgSession from "connect-pg-simple";
 import { registerRoutes } from "./routes";
-// import { serveStatic } from "./static"; // Disabled for production
 import { createServer } from "http";
 import { db } from "./db";
 import { users } from "../shared/schema";
@@ -18,7 +17,7 @@ import { promisify } from "util";
 
 // ========== EARLY DEBUG ==========
 console.log("🔴 EARLY DEBUG: Server starting");
-console.log("File version: 2025-12-31-session-fix");
+console.log("File version: 2025-01-07-cookie-fix");
 console.log("Current time:", new Date().toISOString());
 // ========== END EARLY DEBUG ==========
 
@@ -53,7 +52,7 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   // Split FRONTEND_URL if it contains multiple origins
   ...(process.env.FRONTEND_URL ? 
-      process.env.FRONTEND_URL.split(',').map(s => s.trim()) : 
+      process.env.FRONTEND_URL.split(',').map(s => s.trim()) :
       ["http://localhost:5173"]
   ),
   "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
@@ -74,7 +73,7 @@ app.use(cors({
       }
       return callback(null, true);
     }
-    
+
     if (uniqueOrigins.includes(origin)) {
       if (process.env.NODE_ENV === 'development') {
         console.log(`✅ CORS allowed for: ${origin}`);
@@ -127,11 +126,11 @@ console.log("⚡ Compression enabled");
 // JSON parsing with validation for invalid JSON
 app.use(express.json({
   verify: (req: any, res: Response, buf: Buffer) => {
-    try { 
+    try {
       if (buf && buf.length > 0) {
-        JSON.parse(buf.toString()); 
+        JSON.parse(buf.toString());
       }
-    } catch(e: any) { 
+    } catch(e: any) {
       console.error("❌ Invalid JSON received:", {
         url: req.url,
         method: req.method,
@@ -140,7 +139,7 @@ app.use(express.json({
         first100Chars: buf?.toString().substring(0, 100),
         error: e.message
       });
-      
+
       // Store the raw buffer for debugging
       req.rawBody = buf?.toString() || '';
     }
@@ -177,16 +176,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Expires', '0');
     res.setHeader('Surrogate-Control', 'no-store');
   }
-  
+
   // Referrer policy for privacy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
+
   // Permissions policy - restrict browser features
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
-  
+
   // Expect-CT header (phasing out but still useful)
   res.setHeader('Expect-CT', 'max-age=86400, enforce');
-  
+
   next();
 });
 
@@ -238,14 +237,13 @@ const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || "studentvoice-secret-key-prod-123456",
   resave: false,
   saveUninitialized: false,
- 
   cookie: {
-    secure: true ,
-    sameSite: "none",
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/',
-    },
+  },
   name: 'studentvoice.sid',
   proxy: true,
 };
@@ -253,6 +251,8 @@ const sessionConfig: session.SessionOptions = {
 // Debug before setting store
 console.log("=== SESSION CONFIG DEBUG ===");
 console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("Cookie secure:", sessionConfig.cookie?.secure);
+console.log("Cookie sameSite:", sessionConfig.cookie?.sameSite);
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
 if (process.env.DATABASE_URL) {
   console.log("DATABASE_URL sample:", process.env.DATABASE_URL.substring(0, 30) + "...");
@@ -304,8 +304,8 @@ app.get("/api/test", (req, res) => {
 
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req: Request, res: Response) => {
-  res.status(403).json({ 
-    success: false, 
+  res.status(403).json({
+    success: false,
     message: "Setup endpoint disabled for security in production.",
     note: "If you need to reset admin, run direct SQL or use signup endpoint."
   });
@@ -314,22 +314,22 @@ app.post("/api/setup/create-admin", (req: Request, res: Response) => {
 // DEVELOPMENT MOCK ENDPOINTS - Add these BEFORE real routes
 if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS === "true") {
   console.log("⚠️ Development mode: Mock endpoints enabled");
-  
+
   // Development-only setup endpoint
   app.post("/api/setup/create-admin", async (req, res) => {
     try {
       console.log("🔧 Development setup endpoint called");
-      
+
       const existingUsers = await db.select().from(users).where(eq(users.username, "admin"));
-      
+
       if (existingUsers.length > 0) {
-        return res.json({ 
-          success: false, 
+        return res.json({
+          success: false,
           message: "Admin user already exists",
           username: "admin"
         });
       }
-      
+
       const hashedPassword = await hashPassword("admin123");
       const [admin] = await db.insert(users).values({
         username: "admin",
@@ -337,10 +337,10 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
         password: hashedPassword,
         role: "admin"
       }).returning();
-      
+
       console.log("✅ Admin user created (development)");
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: "Admin user created successfully",
         user: {
           username: "admin",
@@ -351,14 +351,14 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
       });
     } catch (error) {
       console.error("❌ Setup error:", error);
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         error: "Failed to create admin user",
         details: error instanceof Error ? error.message : String(error)
       });
     }
   });
-  
+
   // Mock leaderboard endpoint
   app.get("/api/leaderboard", (req, res) => {
     console.log("📊 Mock leaderboard endpoint called");
@@ -368,7 +368,7 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
       { id: "3", name: "Test User 3", score: 70, complaints: 3 }
     ]);
   });
-    
+
   // Mock login endpoint
   app.post("/api/auth/login", (req, res) => {
     console.log("🔐 Mock login endpoint called");
@@ -384,7 +384,7 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
       message: "Login successful (development mode)"
     });
   });
-  
+
   // Mock signup endpoint
   app.post("/api/auth/signup", (req, res) => {
     console.log("📝 Mock signup endpoint called");
@@ -400,7 +400,7 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
       message: "Signup successful (development mode)"
     });
   });
-  
+
   // Mock complaints endpoint
   app.get("/api/complaints", (req, res) => {
     console.log("📝 Mock complaints endpoint called");
@@ -427,8 +427,8 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     method: req.method,
     timestamp: new Date().toISOString()
   });
-  
-  res.status(500).json({ 
+
+  res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? "Something went wrong!" : err.message,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
@@ -449,6 +449,8 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
+  console.log(`🍪 Cookie secure: ${sessionConfig.cookie?.secure}`);
+  console.log(`🍪 Cookie sameSite: ${sessionConfig.cookie?.sameSite}`);
   console.log(`🔒 Setup endpoint: ${process.env.NODE_ENV === 'production' ? 'DISABLED for security' : 'ENABLED for development'}`);
   console.log(`🔍 JSON validation: ${process.env.NODE_ENV === 'production' ? 'ENABLED' : 'ENABLED with verbose logging'}`);
 });
