@@ -13,20 +13,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Get API URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'https://student-complaint-backend.onrender.com';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth/me", { credentials: "include" });
+      // ✅ FIXED: Use full API URL
+      const response = await fetch(`${API_URL}/api/auth/me`, { 
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
       } else {
         setUser(null);
       }
-    } catch {
+    } catch (error) {
+      console.error('fetchUser error:', error);
       setUser(null);
     } finally {
       setIsLoading(false);
