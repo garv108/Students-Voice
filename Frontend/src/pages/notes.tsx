@@ -8,22 +8,59 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { useToast } from "../hooks/use-toast";
 import { BookOpen, Download, FileText, IndianRupee, ShoppingCart } from "lucide-react";
-import type { NotesCategory, NotesFile, NotesPurchase } from "../../../Backend/shared/schema";
 
-const BRANCHES = ["CS", "Civil", "Mech", "Electrical", "Chemical", "IT"];
+// Type definitions
+interface NotesCategory {
+  id: number;
+  branch: string;
+  semester: number;
+  subjectName: string;
+  description?: string;
+  isFree: boolean;
+  createdAt?: Date;
+}
+
+interface NotesFile {
+  id: string;
+  categoryId: number;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  fileSize?: number;
+  price: number;
+  description?: string;
+  previewUrl?: string;
+  title?: string;
+  isFree?: boolean;
+  createdAt?: Date;
+}
+
+interface NotesPurchase {
+  id: number;
+  userId: string;
+  fileId: string;
+  amount: number;
+  paymentProof?: string;
+  paymentStatus: "pending" | "verified" | "rejected";
+  transactionId?: string;
+  verifiedBy?: string;
+  verifiedAt?: Date;
+  createdAt?: Date;
+}
+
+const BRANCHES = ["CS", "Civil", "Mechanical", "Electrical"];
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export default function NotesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
-  const [selectedSemester, setSelectedSemester] = useState<string>("");
+  const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedSemester, setSelectedSemester] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<NotesCategory | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<NotesFile | null>(null);
@@ -53,41 +90,31 @@ export default function NotesPage() {
 
   // Filter categories based on selected branch and semester
   const filteredCategories = categories.filter(category => {
-    if (selectedBranch && category.branch !== selectedBranch) return false;
-    if (selectedSemester && category.semester !== parseInt(selectedSemester)) return false;
+    if (selectedBranch && selectedBranch !== "all" && category.branch !== selectedBranch) return false;
+    if (selectedSemester && selectedSemester !== "all" && category.semester !== parseInt(selectedSemester)) return false;
     return true;
   });
 
   // Group categories by subject
   const subjectGroups = filteredCategories.reduce((acc, category) => {
-    const key = `${category.branch}-${category.semester}-${category.subject}`;
+    const key = `${category.branch}-${category.semester}-${category.subjectName}`;
     if (!acc[key]) {
       acc[key] = {
-        subject: category.subject,
+        subject: category.subjectName,
         branch: category.branch,
         semester: category.semester,
         categories: [],
         fileCount: 0,
         totalPrice: 0,
-        isFree: false,
+        isFree: category.isFree,
       };
     }
     acc[key].categories.push(category);
     return acc;
   }, {} as Record<string, any>);
 
-  // Calculate file counts and pricing for each subject group
-  Object.values(subjectGroups).forEach((group: any) => {
-    const allFiles = group.categories.flatMap((cat: NotesCategory) =>
-      files.filter((file: NotesFile) => file.categoryId === cat.id)
-    );
-    group.fileCount = allFiles.length;
-    group.totalPrice = allFiles.reduce((sum: number, file: NotesFile) => sum + file.price, 0);
-    group.isFree = allFiles.some((file: NotesFile) => file.isFree);
-  });
-
   const purchaseMutation = useMutation({
-    mutationFn: (data: { fileId: string; paymentProof: string }) =>
+    mutationFn: (data: { fileId: string; paymentProof: string; transactionId: string }) =>
       apiRequestJson("POST", "/api/notes/purchase", data),
     onSuccess: () => {
       toast({
@@ -176,6 +203,7 @@ export default function NotesPage() {
     purchaseMutation.mutate({
       fileId: selectedFile.id,
       paymentProof: paymentProof.trim(),
+      transactionId: "user-provided-txn-id"
     });
   };
 
@@ -202,7 +230,7 @@ export default function NotesPage() {
                       <SelectValue placeholder="All Branches" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Branches</SelectItem>
+                      <SelectItem value="all">All Branches</SelectItem>
                       {BRANCHES.map(branch => (
                         <SelectItem key={branch} value={branch}>{branch}</SelectItem>
                       ))}
@@ -217,9 +245,9 @@ export default function NotesPage() {
                       <SelectValue placeholder="All Semesters" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Semesters</SelectItem>
+                      <SelectItem value="all">All Semesters</SelectItem>
                       {SEMESTERS.map(sem => (
-                        <SelectItem key={sem} value={sem.toString()}>{sem}</SelectItem>
+                        <SelectItem key={sem} value={sem.toString()}>Semester {sem}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -249,7 +277,7 @@ export default function NotesPage() {
                   </Card>
                 ))}
               </div>
-            ) : (
+            ) : Object.keys(subjectGroups).length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {Object.values(subjectGroups).map((group: any) => (
                   <Card key={`${group.branch}-${group.semester}-${group.subject}`} className="hover:shadow-lg transition-shadow">
@@ -265,7 +293,7 @@ export default function NotesPage() {
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <FileText className="h-4 w-4" />
-                          <span>{group.fileCount} files available</span>
+                          <span>Files will be available soon</span>
                         </div>
 
                         <div className="flex items-center justify-between">
@@ -274,87 +302,25 @@ export default function NotesPage() {
                           ) : (
                             <div className="flex items-center gap-1">
                               <IndianRupee className="h-4 w-4" />
-                              <span className="font-semibold">{group.totalPrice}</span>
+                              <span className="font-semibold">₹50</span>
                             </div>
                           )}
 
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedCategory(group.categories[0])}
-                              >
-                                View Files
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                              <DialogHeader>
-                                <DialogTitle>{group.subject} - Files</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                {filesLoading ? (
-                                  <div className="space-y-2">
-                                    {[...Array(3)].map((_, i) => (
-                                      <div key={i} className="h-16 bg-muted rounded animate-pulse"></div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  files.map((file: NotesFile) => {
-                                    const purchase = purchases.find(p => p.fileId === file.id);
-                                    const isPurchased = purchase?.paymentStatus === "verified";
-                                    const isPending = purchase?.paymentStatus === "pending";
-
-                                    return (
-                                      <div key={file.id} className="flex items-center justify-between p-4 border rounded-lg">
-                                        <div className="flex-1">
-                                          <h4 className="font-medium">{file.title}</h4>
-                                          {file.description && (
-                                            <p className="text-sm text-muted-foreground mt-1">{file.description}</p>
-                                          )}
-                                          <div className="flex items-center gap-4 mt-2">
-                                            {file.isFree ? (
-                                              <Badge variant="secondary">Free</Badge>
-                                            ) : (
-                                              <div className="flex items-center gap-1">
-                                                <IndianRupee className="h-3 w-3" />
-                                                <span className="text-sm font-medium">{file.price}</span>
-                                              </div>
-                                            )}
-                                            {isPurchased && <Badge variant="default">Purchased</Badge>}
-                                            {isPending && <Badge variant="outline">Pending Verification</Badge>}
-                                          </div>
-                                        </div>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => handleDownload(file)}
-                                          disabled={downloadMutation.isPending}
-                                          className="ml-4"
-                                        >
-                                          <Download className="h-4 w-4 mr-2" />
-                                          {file.isFree || isPurchased ? "Download" : "Purchase"}
-                                        </Button>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                          <Button variant="outline" size="sm" disabled>
+                            Coming Soon
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
-            )}
-
-            {Object.keys(subjectGroups).length === 0 && !categoriesLoading && (
+            ) : (
               <div className="text-center py-12">
                 <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium mb-2">No subjects found</h3>
+                <h3 className="text-lg font-medium mb-2">No subjects available yet</h3>
                 <p className="text-muted-foreground">
-                  Try adjusting your filters to see available subjects.
+                  Notes will be added soon. Check back later!
                 </p>
               </div>
             )}
@@ -374,23 +340,38 @@ export default function NotesPage() {
           {selectedFile && (
             <div className="space-y-4">
               <div>
-                <h4 className="font-medium">{selectedFile.title}</h4>
+                <h4 className="font-medium">{selectedFile.title || selectedFile.fileName}</h4>
                 <p className="text-sm text-muted-foreground">{selectedFile.description}</p>
                 <div className="flex items-center gap-1 mt-2">
                   <IndianRupee className="h-4 w-4" />
-                  <span className="font-semibold">{selectedFile.price}</span>
+                  <span className="font-semibold">₹{selectedFile.price}</span>
+                </div>
+              </div>
+
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="text-center">
+                  <img 
+                    src="https://kcvdlnlorcblxbnlcfeu.supabase.co/storage/v1/object/sign/EduNotes/UPI%20QR%20Code.jpg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV82ZWU4M2I3YS0zYTUxLTQ5YzUtYTExNS01N2ZjNDM3MjYzNGUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJFZHVOb3Rlcy9VUEkgUVIgQ29kZS5qcGciLCJpYXQiOjE3Njc4Mjc4NTMsImV4cCI6MTc5OTM2Mzg1M30.4a5cO-6XOhbtrOzA65JCFvlUp3JfXJ4fqQe5AnKLdIc"
+                    alt="QR Code"
+                    className="w-48 h-48 mx-auto"
+                  />
+                  <p className="text-sm font-medium mt-2">UPI ID: 9549902809@yapl</p>
+                  <p className="text-xs text-muted-foreground">Scan & Pay with any UPI app</p>
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="payment-proof">Payment Proof</Label>
+                <Label htmlFor="payment-proof">Payment Screenshot/Transaction ID</Label>
                 <Textarea
                   id="payment-proof"
-                  placeholder="Paste your payment screenshot URL or transaction details here..."
+                  placeholder="Paste your transaction ID or upload payment screenshot URL..."
                   value={paymentProof}
                   onChange={(e) => setPaymentProof(e.target.value)}
                   className="mt-1"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  ⚠️ No refunds after verification
+                </p>
               </div>
 
               <div className="flex gap-2">
@@ -399,7 +380,7 @@ export default function NotesPage() {
                   disabled={purchaseMutation.isPending}
                   className="flex-1"
                 >
-                  {purchaseMutation.isPending ? "Submitting..." : "Submit Purchase"}
+                  {purchaseMutation.isPending ? "Submitting..." : "Submit Payment Proof"}
                 </Button>
                 <Button
                   variant="outline"
