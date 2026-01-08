@@ -11,8 +11,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
-import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard } from "lucide-react";
-import { useState } from "react";
+import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, BookOpen } from "lucide-react";import { useState } from "react";
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -21,6 +20,7 @@ export function Header() {
 
   const navLinks = [
     { href: "/", label: "Leaderboard", icon: Home },
+    { href: "/notes", label: "EduNotes", icon: BookOpen },
     { href: "/submit", label: "Submit Problem", icon: Plus, requiresAuth: true },
   ];
 

@@ -8,8 +8,10 @@ import { z } from "zod";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import { db } from "./db";
-import { users } from "../shared/schema";
-import { eq } from "drizzle-orm";
+import { users, notesCategories, notesFiles, notesBundles, notesPurchases, bundlePurchases } from "../shared/schema";
+import { eq, and, or } from "drizzle-orm";
+import { uploadFile, getSignedUrl, deleteFile, getFileMetadata } from "./notes-storage";
+import multer from "multer";
 
 const scryptAsync = promisify(scrypt);
 
@@ -498,6 +500,205 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Unban user error:", error);
       res.status(500).json({ message: "Failed to unban user" });
+    }
+  });
+
+  // EduNotes Routes
+
+  // Public routes
+  app.get("/api/notes/categories", async (req, res) => {
+    try {
+      const categories = await db.select().from(notesCategories);
+      res.json(categories);
+    } catch (error) {
+      console.error("Get categories error:", error);
+      res.status(500).json({ message: "Failed to load categories" });
+    }
+  });
+
+  app.get("/api/notes/files/:categoryId", async (req, res) => {
+    try {
+      const { categoryId } = req.params;
+      const files = await db.select().from(notesFiles).where(eq(notesFiles.categoryId, categoryId));
+      res.json(files);
+    } catch (error) {
+      console.error("Get files error:", error);
+      res.status(500).json({ message: "Failed to load files" });
+    }
+  });
+
+  app.get("/api/notes/bundles", async (req, res) => {
+    try {
+      const bundles = await db.select().from(notesBundles);
+      res.json(bundles);
+    } catch (error) {
+      console.error("Get bundles error:", error);
+      res.status(500).json({ message: "Failed to load bundles" });
+    }
+  });
+
+  // Authenticated routes
+  app.post("/api/notes/purchase", requireAuth, async (req, res) => {
+    try {
+      const { fileId, paymentProof } = req.body;
+      const userId = (req as any).session.userId!;
+
+      // Check if file exists
+      const file = await db.select().from(notesFiles).where(eq(notesFiles.id, fileId)).limit(1);
+      if (!file.length) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      // Check if already purchased
+      const existingPurchase = await db.select().from(notesPurchases)
+        .where(and(eq(notesPurchases.buyerId, userId), eq(notesPurchases.fileId, fileId)))
+        .limit(1);
+
+      if (existingPurchase.length) {
+        return res.status(400).json({ message: "Already purchased" });
+      }
+
+      // Create purchase record
+      const purchase = await db.insert(notesPurchases).values({
+        buyerId: userId,
+        fileId,
+        paymentProof,
+        paymentStatus: "pending",
+      }).returning();
+
+      res.json({ purchase: purchase[0] });
+    } catch (error) {
+      console.error("Purchase error:", error);
+      res.status(500).json({ message: "Failed to process purchase" });
+    }
+  });
+
+  app.get("/api/notes/my-purchases", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).session.userId!;
+      const purchases = await db.select().from(notesPurchases).where(eq(notesPurchases.buyerId, userId));
+      res.json(purchases);
+    } catch (error) {
+      console.error("Get purchases error:", error);
+      res.status(500).json({ message: "Failed to load purchases" });
+    }
+  });
+
+  app.get("/api/notes/download/:fileId", requireAuth, async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      const userId = (req as any).session.userId!;
+
+      // Check if user has verified purchase
+      const purchase = await db.select().from(notesPurchases)
+        .where(and(eq(notesPurchases.buyerId, userId), eq(notesPurchases.fileId, fileId), eq(notesPurchases.paymentStatus, "verified")))
+        .limit(1);
+
+      if (!purchase.length) {
+        return res.status(403).json({ message: "Purchase not verified" });
+      }
+
+      // Get file info
+      const file = await db.select().from(notesFiles).where(eq(notesFiles.id, fileId)).limit(1);
+      if (!file.length) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      // Generate signed URL
+      const signedUrl = await getSignedUrl(file[0].filePath);
+      res.json({ downloadUrl: signedUrl });
+    } catch (error) {
+      console.error("Download error:", error);
+      res.status(500).json({ message: "Failed to generate download link" });
+    }
+  });
+
+  // Admin routes
+  const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
+
+  app.post("/api/admin/notes/upload", requireAdmin, upload.single('file'), async (req, res) => {
+    try {
+      const { categoryId, title, description, price } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      // Upload to Supabase
+      const uploadResult = await uploadFile(file.buffer, file.originalname, categoryId);
+
+      // Save to database
+      const fileRecord = await db.insert(notesFiles).values({
+        categoryId,
+        title,
+        description,
+        filePath: uploadResult.path,
+        fileSize: file.size,
+        price: parseFloat(price) || 0,
+      }).returning();
+
+      res.json({ file: fileRecord[0] });
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({ message: "Failed to upload file" });
+    }
+  });
+
+  app.post("/api/admin/notes/category", requireAdmin, async (req, res) => {
+    try {
+      const { name, branch, semester, subject } = req.body;
+
+      const category = await db.insert(notesCategories).values({
+        name,
+        branch,
+        semester,
+        subject,
+      }).returning();
+
+      res.json({ category: category[0] });
+    } catch (error) {
+      console.error("Create category error:", error);
+      res.status(500).json({ message: "Failed to create category" });
+    }
+  });
+
+  app.put("/api/admin/notes/purchase/:id/verify", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { verified } = req.body;
+
+      await db.update(notesPurchases)
+        .set({ paymentStatus: verified === true ? "verified" : "pending" })
+        .where(eq(notesPurchases.id, id));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Verify purchase error:", error);
+      res.status(500).json({ message: "Failed to verify purchase" });
+    }
+  });
+
+  app.delete("/api/admin/notes/file/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Get file info
+      const file = await db.select().from(notesFiles).where(eq(notesFiles.id, id)).limit(1);
+      if (!file.length) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      // Delete from Supabase
+      await deleteFile(file[0].filePath);
+
+      // Delete from database
+      await db.delete(notesFiles).where(eq(notesFiles.id, id));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete file error:", error);
+      res.status(500).json({ message: "Failed to delete file" });
     }
   });
 

@@ -7,6 +7,7 @@ export const roleEnum = pgEnum("role", ["student", "moderator", "admin"]);
 export const statusEnum = pgEnum("status", ["pending", "in_progress", "solved"]);
 export const urgencyEnum = pgEnum("urgency", ["normal", "urgent", "critical", "top_priority", "emergency"]);
 export const severityEnum = pgEnum("severity", ["good", "average", "poor", "bad", "worst", "critical"]);
+export const paymentStatusEnum = pgEnum("payment_status", ["pending", "verified", "rejected"]);
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -129,6 +130,115 @@ export const clusterGroupsRelations = relations(clusterGroups, ({ many }) => ({
   complaints: many(complaints),
 }));
 
+// EduNotes Tables
+export const notesCategories = pgTable("notes_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  branch: text("branch").notNull(),
+  semester: integer("semester").notNull(),
+  subject: text("subject").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const notesCategoriesRelations = relations(notesCategories, ({ many }) => ({
+  notesFiles: many(notesFiles),
+  notesBundles: many(notesBundles),
+}));
+
+export const notesFiles = pgTable("notes_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").notNull().references(() => notesCategories.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  fileUrl: text("file_url").notNull(), // Supabase URL
+  price: integer("price").notNull(), // Price in rupees
+  isFree: boolean("is_free").notNull().default(false), // Semester 1 files are free
+  uploadedBy: varchar("uploaded_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const notesFilesRelations = relations(notesFiles, ({ one, many }) => ({
+  category: one(notesCategories, {
+    fields: [notesFiles.categoryId],
+    references: [notesCategories.id],
+  }),
+  uploader: one(users, {
+    fields: [notesFiles.uploadedBy],
+    references: [users.id],
+  }),
+  purchases: many(notesPurchases),
+}));
+
+export const notesPurchases = pgTable("notes_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fileId: varchar("file_id").notNull().references(() => notesFiles.id, { onDelete: "cascade" }),
+  buyerId: varchar("buyer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  paymentProof: text("payment_proof").notNull(), // Screenshot URL
+  paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
+  verifiedBy: varchar("verified_by").references(() => users.id), // Admin who verified
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const notesPurchasesRelations = relations(notesPurchases, ({ one }) => ({
+  file: one(notesFiles, {
+    fields: [notesPurchases.fileId],
+    references: [notesFiles.id],
+  }),
+  buyer: one(users, {
+    fields: [notesPurchases.buyerId],
+    references: [users.id],
+  }),
+  verifier: one(users, {
+    fields: [notesPurchases.verifiedBy],
+    references: [users.id],
+  }),
+}));
+
+export const notesBundles = pgTable("notes_bundles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").notNull().references(() => notesCategories.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  price: integer("price").notNull(), // Discounted bundle price
+  discountPercentage: integer("discount_percentage").notNull(),
+  fileIds: text("file_ids").array().notNull(), // Array of file IDs in this bundle
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const notesBundlesRelations = relations(notesBundles, ({ one, many }) => ({
+  category: one(notesCategories, {
+    fields: [notesBundles.categoryId],
+    references: [notesCategories.id],
+  }),
+  purchases: many(bundlePurchases),
+}));
+
+export const bundlePurchases = pgTable("bundle_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bundleId: varchar("bundle_id").notNull().references(() => notesBundles.id, { onDelete: "cascade" }),
+  buyerId: varchar("buyer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  paymentProof: text("payment_proof").notNull(), // Screenshot URL
+  paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
+  verifiedBy: varchar("verified_by").references(() => users.id), // Admin who verified
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => ({
+  bundle: one(notesBundles, {
+    fields: [bundlePurchases.bundleId],
+    references: [notesBundles.id],
+  }),
+  buyer: one(users, {
+    fields: [bundlePurchases.buyerId],
+    references: [users.id],
+  }),
+  verifier: one(users, {
+    fields: [bundlePurchases.verifiedBy],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   email: z.string().email("Invalid email"),
@@ -158,6 +268,11 @@ export type InsertReaction = z.infer<typeof insertReactionSchema>;
 export type Like = typeof likes.$inferSelect;
 export type AbuseLog = typeof abuseLogs.$inferSelect;
 export type ClusterGroup = typeof clusterGroups.$inferSelect;
+export type NotesCategory = typeof notesCategories.$inferSelect;
+export type NotesFile = typeof notesFiles.$inferSelect;
+export type NotesPurchase = typeof notesPurchases.$inferSelect;
+export type NotesBundle = typeof notesBundles.$inferSelect;
+export type BundlePurchase = typeof bundlePurchases.$inferSelect;
 
 export const EMOJI_REACTIONS = ["thumbsup", "thumbsdown", "fire", "warning", "check"] as const;
 export type EmojiReaction = typeof EMOJI_REACTIONS[number];
