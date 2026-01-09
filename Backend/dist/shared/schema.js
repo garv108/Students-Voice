@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.URGENCY_THRESHOLDS = exports.EMOJI_REACTIONS = exports.insertReactionSchema = exports.insertComplaintSchema = exports.loginSchema = exports.insertUserSchema = exports.clusterGroupsRelations = exports.clusterGroups = exports.abuseLogsRelations = exports.abuseLogs = exports.likesRelations = exports.likes = exports.reactionsRelations = exports.reactions = exports.complaintsRelations = exports.complaints = exports.usersRelations = exports.users = exports.severityEnum = exports.urgencyEnum = exports.statusEnum = exports.roleEnum = void 0;
+exports.URGENCY_THRESHOLDS = exports.EMOJI_REACTIONS = exports.insertReactionSchema = exports.insertComplaintSchema = exports.loginSchema = exports.insertUserSchema = exports.bundlePurchasesRelations = exports.bundlePurchases = exports.notesBundlesRelations = exports.notesBundles = exports.notesPurchasesRelations = exports.notesPurchases = exports.notesFilesRelations = exports.notesFiles = exports.notesCategoriesRelations = exports.notesCategories = exports.clusterGroupsRelations = exports.clusterGroups = exports.abuseLogsRelations = exports.abuseLogs = exports.likesRelations = exports.likes = exports.reactionsRelations = exports.reactions = exports.complaintsRelations = exports.complaints = exports.usersRelations = exports.users = exports.paymentStatusEnum = exports.severityEnum = exports.urgencyEnum = exports.statusEnum = exports.roleEnum = void 0;
 exports.calculateUrgency = calculateUrgency;
 const drizzle_orm_1 = require("drizzle-orm");
 const pg_core_1 = require("drizzle-orm/pg-core");
@@ -9,6 +9,7 @@ exports.roleEnum = (0, pg_core_1.pgEnum)("role", ["student", "moderator", "admin
 exports.statusEnum = (0, pg_core_1.pgEnum)("status", ["pending", "in_progress", "solved"]);
 exports.urgencyEnum = (0, pg_core_1.pgEnum)("urgency", ["normal", "urgent", "critical", "top_priority", "emergency"]);
 exports.severityEnum = (0, pg_core_1.pgEnum)("severity", ["good", "average", "poor", "bad", "worst", "critical"]);
+exports.paymentStatusEnum = (0, pg_core_1.pgEnum)("payment_status", ["pending", "verified", "rejected"]);
 exports.users = (0, pg_core_1.pgTable)("users", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     username: (0, pg_core_1.text)("username").notNull().unique(),
@@ -117,6 +118,105 @@ exports.clusterGroups = (0, pg_core_1.pgTable)("cluster_groups", {
 });
 exports.clusterGroupsRelations = (0, drizzle_orm_1.relations)(exports.clusterGroups, ({ many }) => ({
     complaints: many(exports.complaints),
+}));
+// EduNotes Tables
+exports.notesCategories = (0, pg_core_1.pgTable)("notes_categories", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    branch: (0, pg_core_1.text)("branch").notNull(),
+    semester: (0, pg_core_1.integer)("semester").notNull(),
+    subject: (0, pg_core_1.text)("subject").notNull(),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+exports.notesCategoriesRelations = (0, drizzle_orm_1.relations)(exports.notesCategories, ({ many }) => ({
+    notesFiles: many(exports.notesFiles),
+    notesBundles: many(exports.notesBundles),
+}));
+exports.notesFiles = (0, pg_core_1.pgTable)("notes_files", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    categoryId: (0, pg_core_1.varchar)("category_id").notNull().references(() => exports.notesCategories.id, { onDelete: "cascade" }),
+    title: (0, pg_core_1.text)("title").notNull(),
+    description: (0, pg_core_1.text)("description"),
+    fileUrl: (0, pg_core_1.text)("file_url").notNull(), // Supabase URL
+    price: (0, pg_core_1.integer)("price").notNull(), // Price in rupees
+    isFree: (0, pg_core_1.boolean)("is_free").notNull().default(false), // Semester 1 files are free
+    uploadedBy: (0, pg_core_1.varchar)("uploaded_by").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+exports.notesFilesRelations = (0, drizzle_orm_1.relations)(exports.notesFiles, ({ one, many }) => ({
+    category: one(exports.notesCategories, {
+        fields: [exports.notesFiles.categoryId],
+        references: [exports.notesCategories.id],
+    }),
+    uploader: one(exports.users, {
+        fields: [exports.notesFiles.uploadedBy],
+        references: [exports.users.id],
+    }),
+    purchases: many(exports.notesPurchases),
+}));
+exports.notesPurchases = (0, pg_core_1.pgTable)("notes_purchases", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    fileId: (0, pg_core_1.varchar)("file_id").notNull().references(() => exports.notesFiles.id, { onDelete: "cascade" }),
+    buyerId: (0, pg_core_1.varchar)("buyer_id").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
+    paymentProof: (0, pg_core_1.text)("payment_proof").notNull(), // Screenshot URL
+    paymentStatus: (0, exports.paymentStatusEnum)("payment_status").notNull().default("pending"),
+    verifiedBy: (0, pg_core_1.varchar)("verified_by").references(() => exports.users.id), // Admin who verified
+    verifiedAt: (0, pg_core_1.timestamp)("verified_at"),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+exports.notesPurchasesRelations = (0, drizzle_orm_1.relations)(exports.notesPurchases, ({ one }) => ({
+    file: one(exports.notesFiles, {
+        fields: [exports.notesPurchases.fileId],
+        references: [exports.notesFiles.id],
+    }),
+    buyer: one(exports.users, {
+        fields: [exports.notesPurchases.buyerId],
+        references: [exports.users.id],
+    }),
+    verifier: one(exports.users, {
+        fields: [exports.notesPurchases.verifiedBy],
+        references: [exports.users.id],
+    }),
+}));
+exports.notesBundles = (0, pg_core_1.pgTable)("notes_bundles", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    categoryId: (0, pg_core_1.varchar)("category_id").notNull().references(() => exports.notesCategories.id, { onDelete: "cascade" }),
+    name: (0, pg_core_1.text)("name").notNull(),
+    description: (0, pg_core_1.text)("description"),
+    price: (0, pg_core_1.integer)("price").notNull(), // Discounted bundle price
+    discountPercentage: (0, pg_core_1.integer)("discount_percentage").notNull(),
+    fileIds: (0, pg_core_1.text)("file_ids").array().notNull(), // Array of file IDs in this bundle
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+exports.notesBundlesRelations = (0, drizzle_orm_1.relations)(exports.notesBundles, ({ one, many }) => ({
+    category: one(exports.notesCategories, {
+        fields: [exports.notesBundles.categoryId],
+        references: [exports.notesCategories.id],
+    }),
+    purchases: many(exports.bundlePurchases),
+}));
+exports.bundlePurchases = (0, pg_core_1.pgTable)("bundle_purchases", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    bundleId: (0, pg_core_1.varchar)("bundle_id").notNull().references(() => exports.notesBundles.id, { onDelete: "cascade" }),
+    buyerId: (0, pg_core_1.varchar)("buyer_id").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
+    paymentProof: (0, pg_core_1.text)("payment_proof").notNull(), // Screenshot URL
+    paymentStatus: (0, exports.paymentStatusEnum)("payment_status").notNull().default("pending"),
+    verifiedBy: (0, pg_core_1.varchar)("verified_by").references(() => exports.users.id), // Admin who verified
+    verifiedAt: (0, pg_core_1.timestamp)("verified_at"),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+exports.bundlePurchasesRelations = (0, drizzle_orm_1.relations)(exports.bundlePurchases, ({ one }) => ({
+    bundle: one(exports.notesBundles, {
+        fields: [exports.bundlePurchases.bundleId],
+        references: [exports.notesBundles.id],
+    }),
+    buyer: one(exports.users, {
+        fields: [exports.bundlePurchases.buyerId],
+        references: [exports.users.id],
+    }),
+    verifier: one(exports.users, {
+        fields: [exports.bundlePurchases.verifiedBy],
+        references: [exports.users.id],
+    }),
 }));
 exports.insertUserSchema = zod_1.z.object({
     username: zod_1.z.string().min(1, "Username is required"),

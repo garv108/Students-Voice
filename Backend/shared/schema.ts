@@ -1,5 +1,5 @@
 ﻿import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, integer, timestamp, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -9,20 +9,42 @@ export const urgencyEnum = pgEnum("urgency", ["normal", "urgent", "critical", "t
 export const severityEnum = pgEnum("severity", ["good", "average", "poor", "bad", "worst", "critical"]);
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "verified", "rejected"]);
 
+// FIXED: Match existing user_sessions table structure
+export const userSessions = pgTable("user_sessions", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+});
+
+export const userSessionsRelations = relations(userSessions, ({ one }) => ({
+  user: one(users, {
+    fields: [userSessions.sid], // Note: Using sid since no user_id column
+    references: [users.id],
+  }),
+}));
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   role: roleEnum("role").notNull().default("student"),
+  
+  // New verification columns
+  rollNumber: text("roll_number").unique(),
+  userType: text("user_type").default("student"), // student, faculty, admin
+  emailVerified: boolean("email_verified").default(false),
+  verificationToken: text("verification_token"),
+  verificationTokenExpiry: timestamp("verification_token_expiry"),  
   bannedUntil: timestamp("banned_until"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   complaints: many(complaints),
   reactions: many(reactions),
   abuseLogs: many(abuseLogs),
+  sessions: many(userSessions),
 }));
 
 export const complaints = pgTable("complaints", {
@@ -239,15 +261,29 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
   }),
 }));
 
+// Validation schemas
 export const insertUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  rollNumber: z.string().regex(
+    /^(2[2-6])(cs|ce|me|ee)\d{2}$/i,
+    "Roll number must be in format: YYbbNN (e.g., 22CS05, 24EE12)"
+  ),
+  userType: z.enum(["student", "faculty"]).default("student"),
 });
 
 export const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, "Token is required"),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email("Invalid email"),
 });
 
 export const insertComplaintSchema = z.object({
@@ -259,6 +295,8 @@ export const insertReactionSchema = z.object({
   emoji: z.string().min(1, "Emoji is required"),
 });
 
+// Type exports
+export type UserSession = typeof userSessions.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Complaint = typeof complaints.$inferSelect;
@@ -273,6 +311,8 @@ export type NotesFile = typeof notesFiles.$inferSelect;
 export type NotesPurchase = typeof notesPurchases.$inferSelect;
 export type NotesBundle = typeof notesBundles.$inferSelect;
 export type BundlePurchase = typeof bundlePurchases.$inferSelect;
+export type VerifyEmail = z.infer<typeof verifyEmailSchema>;
+export type ResendVerification = z.infer<typeof resendVerificationSchema>;
 
 export const EMOJI_REACTIONS = ["thumbsup", "thumbsdown", "fire", "warning", "check"] as const;
 export type EmojiReaction = typeof EMOJI_REACTIONS[number];
@@ -292,4 +332,3 @@ export function calculateUrgency(count: number): typeof urgencyEnum.enumValues[n
   if (count >= 10) return "urgent";
   return "normal";
 }
-

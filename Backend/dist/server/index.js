@@ -13,7 +13,6 @@ const compression_1 = __importDefault(require("compression"));
 const express_session_1 = __importDefault(require("express-session"));
 const connect_pg_simple_1 = __importDefault(require("connect-pg-simple"));
 const routes_1 = require("./routes");
-// import { serveStatic } from "./static"; // Disabled for production
 const http_1 = require("http");
 const db_1 = require("./db");
 const schema_1 = require("../shared/schema");
@@ -22,14 +21,19 @@ const crypto_1 = require("crypto");
 const util_1 = require("util");
 // ========== EARLY DEBUG ==========
 console.log("🔴 EARLY DEBUG: Server starting");
-console.log("File version: 2025-12-31-session-fix");
+console.log("File version: 2025-01-07-cookie-fix");
 console.log("Current time:", new Date().toISOString());
-// ========== END EARLY DEBUG ==========
 const scryptAsync = (0, util_1.promisify)(crypto_1.scrypt);
 async function hashPassword(password) {
     const salt = (0, crypto_1.randomBytes)(16).toString("hex");
     const buf = (await scryptAsync(password, salt, 64));
     return `${buf.toString("hex")}.${salt}`;
+}
+// Validate required environment variables
+const sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret && process.env.NODE_ENV === 'production') {
+    console.error("🚨 FATAL ERROR: SESSION_SECRET environment variable is required for production");
+    process.exit(1);
 }
 const app = (0, express_1.default)();
 app.set('trust proxy', 1);
@@ -51,15 +55,19 @@ app.use((0, cors_1.default)({
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps, curl, postman)
         if (!origin) {
-            console.log("🔓 No origin - allowing request");
+            if (process.env.NODE_ENV === 'development') {
+                console.log("🔓 No origin - allowing request");
+            }
             return callback(null, true);
         }
         if (uniqueOrigins.includes(origin)) {
-            console.log(`✅ CORS allowed for: ${origin}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`✅ CORS allowed for: ${origin}`);
+            }
             callback(null, true);
         }
         else {
-            console.log(`❌ CORS blocked: ${origin}`);
+            console.warn(`❌ CORS blocked: ${origin}`);
             callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
         }
     },
@@ -77,11 +85,8 @@ app.use((0, helmet_1.default)({
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'", "http://localhost:5173",
-                "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-                "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
-                "https://students-voice-bay.vercel.app"],
+            imgSrc: ["'self'", "data:", "https:", "http:"],
+            connectSrc: ["'self'", ...uniqueOrigins],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"],
             upgradeInsecureRequests: [],
@@ -100,6 +105,47 @@ console.log("🔒 Helmet.js security headers enabled");
 // Compression middleware
 app.use((0, compression_1.default)());
 console.log("⚡ Compression enabled");
+// JSON parsing with validation for invalid JSON
+app.use(express_1.default.json({
+    verify: (req, res, buf) => {
+        try {
+            if (buf && buf.length > 0) {
+                JSON.parse(buf.toString());
+            }
+        }
+        catch (e) {
+            console.error("❌ Invalid JSON received:", {
+                url: req.url,
+                method: req.method,
+                contentLength: buf?.length || 0,
+                contentType: req.headers['content-type'],
+                first100Chars: buf?.toString().substring(0, 100),
+                error: e.message
+            });
+            // Store the raw buffer for debugging
+            req.rawBody = buf?.toString() || '';
+        }
+    }
+}));
+app.use(express_1.default.urlencoded({ extended: true }));
+// JSON parsing error handler
+app.use((err, req, res, next) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+        console.error('JSON Syntax Error:', {
+            url: req.url,
+            method: req.method,
+            error: err.message,
+            rawBody: req.rawBody?.substring(0, 200)
+        });
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid JSON format',
+            message: 'Please check your request body for JSON syntax errors',
+            help: 'Ensure your request has proper JSON syntax with double quotes for keys and values'
+        });
+    }
+    next(err);
+});
 // Additional security headers middleware
 app.use((req, res, next) => {
     // Prevent caching of sensitive data (API responses)
@@ -109,8 +155,6 @@ app.use((req, res, next) => {
         res.setHeader('Expires', '0');
         res.setHeader('Surrogate-Control', 'no-store');
     }
-    // Additional XSS protection (redundant with Helmet but extra safety)
-    res.setHeader('X-XSS-Protection', '1; mode=block');
     // Referrer policy for privacy
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     // Permissions policy - restrict browser features
@@ -130,11 +174,15 @@ const generalLimiter = (0, express_rate_limit_1.default)({
 });
 const authLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Only 5 login/signup attempts per windowMs
+    max: process.env.NODE_ENV === 'production' ? 10 : 100, // More lenient in dev
     message: { error: "Too many authentication attempts, please try again later." },
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: true, // Don't count successful logins
+    keyGenerator: (req) => {
+        // Use IP + user-agent for better rate limiting
+        return `${req.ip}-${req.headers['user-agent']}`;
+    }
 });
 const adminLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -157,12 +205,11 @@ const sessionConfig = {
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: true,
-        sameSite: 'none',
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         path: '/',
-        domain: '.onrender.com',
     },
     name: 'studentvoice.sid',
     proxy: true,
@@ -170,6 +217,8 @@ const sessionConfig = {
 // Debug before setting store
 console.log("=== SESSION CONFIG DEBUG ===");
 console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("Cookie secure:", sessionConfig.cookie?.secure);
+console.log("Cookie sameSite:", sessionConfig.cookie?.sameSite);
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
 if (process.env.DATABASE_URL) {
     console.log("DATABASE_URL sample:", process.env.DATABASE_URL.substring(0, 30) + "...");
@@ -197,6 +246,24 @@ else {
 app.use((0, express_session_1.default)(sessionConfig));
 console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore'}`);
 console.log("=== END DEBUG ===");
+// Health check endpoints
+app.get("/api/health", (req, res) => {
+    res.json({ status: "healthy", server: "Student Complaint System" });
+});
+app.get("/api/health/db", async (req, res) => {
+    try {
+        await db_1.db.execute('SELECT 1');
+        res.json({ status: "healthy", database: "connected" });
+    }
+    catch (error) {
+        console.error("Database health check failed:", error);
+        res.status(500).json({ status: "unhealthy", database: "disconnected" });
+    }
+});
+// Test endpoint
+app.get("/api/test", (req, res) => {
+    res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
+});
 // SECURED: Setup endpoint disabled for production
 app.post("/api/setup/create-admin", (req, res) => {
     res.status(403).json({
@@ -205,15 +272,8 @@ app.post("/api/setup/create-admin", (req, res) => {
         note: "If you need to reset admin, run direct SQL or use signup endpoint."
     });
 });
-// Test endpoints
-app.get("/api/test", (req, res) => {
-    res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
-});
-app.get("/api/health", (req, res) => {
-    res.json({ status: "healthy", server: "Student Complaint System" });
-});
 // DEVELOPMENT MOCK ENDPOINTS - Add these BEFORE real routes
-if (process.env.NODE_ENV === "development") {
+if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS === "true") {
     console.log("⚠️ Development mode: Mock endpoints enabled");
     // Development-only setup endpoint
     app.post("/api/setup/create-admin", async (req, res) => {
@@ -264,17 +324,6 @@ if (process.env.NODE_ENV === "development") {
             { id: "3", name: "Test User 3", score: 70, complaints: 3 }
         ]);
     });
-    // Mock auth/me endpoint
-    app.get("/api/auth/me", (req, res) => {
-        console.log("👤 Mock auth/me endpoint called");
-        res.json({
-            id: "dev-user-123",
-            email: "dev@example.com",
-            name: "Development User",
-            role: "student",
-            createdAt: new Date().toISOString()
-        });
-    });
     // Mock login endpoint
     app.post("/api/auth/login", (req, res) => {
         console.log("🔐 Mock login endpoint called");
@@ -311,9 +360,6 @@ if (process.env.NODE_ENV === "development") {
         res.json([]);
     });
 }
-// Body parsing middleware
-app.use(express_1.default.json());
-app.use(express_1.default.urlencoded({ extended: true }));
 const httpServer = (0, http_1.createServer)(app);
 // Register API routes - pass both httpServer and app
 (0, routes_1.registerRoutes)(httpServer, app);
@@ -321,14 +367,35 @@ const httpServer = (0, http_1.createServer)(app);
 if (process.env.NODE_ENV === "production") {
     // serveStatic(app); // Disabled for production
 }
-// Error handling middleware
+// Global error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: "Something went wrong!" });
+    console.error('🚨 Unhandled Error:', {
+        message: err.message,
+        stack: err.stack,
+        url: req.url,
+        method: req.method,
+        timestamp: new Date().toISOString()
+    });
+    res.status(500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' ? "Something went wrong!" : err.message,
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
+});
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'Route not found',
+        path: req.url
+    });
 });
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`✅ Environment: ${process.env.NODE_ENV}`);
+    console.log(`🍪 Cookie secure: ${sessionConfig.cookie?.secure}`);
+    console.log(`🍪 Cookie sameSite: ${sessionConfig.cookie?.sameSite}`);
     console.log(`🔒 Setup endpoint: ${process.env.NODE_ENV === 'production' ? 'DISABLED for security' : 'ENABLED for development'}`);
+    console.log(`🔍 JSON validation: ${process.env.NODE_ENV === 'production' ? 'ENABLED' : 'ENABLED with verbose logging'}`);
 });

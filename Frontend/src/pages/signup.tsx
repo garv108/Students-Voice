@@ -16,10 +16,18 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { useAuth } from "../lib/auth";
 import { useToast } from "../hooks/use-toast";
-import { Shield, UserPlus, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Shield, UserPlus, Eye, EyeOff, CheckCircle, User, GraduationCap, MailCheck } from "lucide-react";
 
+// Updated signup schema with roll number and user type
 const signupSchema = z.object({
   username: z
     .string()
@@ -32,9 +40,32 @@ const signupSchema = z.object({
     .min(6, "Password must be at least 6 characters")
     .max(100, "Password must be at most 100 characters"),
   confirmPassword: z.string(),
+  userType: z.enum(["student", "faculty"], {
+    required_error: "Please select user type",
+  }),
+  rollNumber: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
+}).refine((data) => {
+  // Roll number required only for students
+  if (data.userType === "student") {
+    return data.rollNumber && data.rollNumber.trim().length > 0;
+  }
+  return true;
+}, {
+  message: "Roll number is required for students",
+  path: ["rollNumber"],
+}).refine((data) => {
+  // Validate roll number format only for students
+  if (data.userType === "student" && data.rollNumber) {
+    const rollNumberRegex = /^(2[2-6])(cs|ce|me|ee)\d{2}$/i;
+    return rollNumberRegex.test(data.rollNumber);
+  }
+  return true;
+}, {
+  message: "Roll number must be in YYbbNN format (e.g., 22CS05, 24EE12)",
+  path: ["rollNumber"],
 });
 
 type SignupFormData = z.infer<typeof signupSchema>;
@@ -45,6 +76,8 @@ export default function Signup() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
 
   const form = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -53,22 +86,151 @@ export default function Signup() {
       email: "",
       password: "",
       confirmPassword: "",
+      userType: "student",
+      rollNumber: "",
     },
   });
+
+  const userType = form.watch("userType");
 
   const onSubmit = async (data: SignupFormData) => {
     setIsLoading(true);
     try {
-      await signup(data.username, data.email, data.password);
-      toast({ title: "Account created successfully!" });
-      setLocation("/");
+      await signup(
+        data.username, 
+        data.email, 
+        data.password, 
+        data.rollNumber, 
+        data.userType
+      );
+      
+      setUserEmail(data.email);
+      setShowVerificationMessage(true);
+      
+      toast({ 
+        title: "Account created successfully!",
+        description: "Please check your email for verification link.",
+        variant: "default"
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Signup failed";
-      toast({ title: message, variant: "destructive" });
+      toast({ 
+        title: "Signup failed",
+        description: message,
+        variant: "destructive" 
+      });
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResendVerification = async () => {
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail }),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Verification email resent",
+          description: "Please check your inbox again.",
+          variant: "default"
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Failed to resend email",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Network error",
+        description: "Failed to resend verification email",
+        variant: "destructive"
+      });
+    }
+  };
+
+  if (showVerificationMessage) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
+          <div className="flex justify-center">
+            <Card className="w-full max-w-md">
+              <CardHeader className="text-center">
+                <div className="mx-auto mb-4">
+                  <div className="p-3 rounded-lg bg-primary/10 inline-block">
+                    <MailCheck className="h-8 w-8 text-primary" />
+                  </div>
+                </div>
+                <CardTitle className="text-2xl">Verify Your Email</CardTitle>
+                <CardDescription>
+                  One more step to complete your registration
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="text-center space-y-3">
+                  <p className="text-muted-foreground">
+                    We've sent a verification link to:
+                  </p>
+                  <p className="text-lg font-medium">{userEmail}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Please check your inbox and click the verification link to activate your account.
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Important:
+                  </h4>
+                  <ul className="text-sm text-blue-700 dark:text-blue-400 space-y-1">
+                    <li>• Check your spam folder if you don't see the email</li>
+                    <li>• The link expires in 24 hours</li>
+                    <li>• You need to verify your email before logging in</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleResendVerification}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Resend Verification Email
+                  </Button>
+                  <Button
+                    onClick={() => setLocation("/login")}
+                    className="w-full"
+                  >
+                    Go to Login
+                  </Button>
+                </div>
+
+                <div className="text-center text-sm text-muted-foreground">
+                  <p>
+                    Wrong email?{" "}
+                    <button
+                      onClick={() => setShowVerificationMessage(false)}
+                      className="text-primary hover:underline"
+                    >
+                      Go back
+                    </button>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -97,6 +259,8 @@ export default function Signup() {
                   "Vote on problems that matter to you",
                   "Track issue resolution progress",
                   "Connect with fellow students",
+                  "Email verification for security",
+                  "One account per student/faculty",
                 ].map((feature, idx) => (
                   <div key={idx} className="flex items-center gap-3">
                     <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
@@ -123,6 +287,38 @@ export default function Signup() {
               <CardContent>
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="userType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>I am a...</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select user type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="student">
+                                <div className="flex items-center gap-2">
+                                  <GraduationCap className="h-4 w-4" />
+                                  Student
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="faculty">
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4" />
+                                  Faculty/Staff
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
                     <FormField
                       control={form.control}
                       name="username"
@@ -159,6 +355,34 @@ export default function Signup() {
                         </FormItem>
                       )}
                     />
+
+                    {userType === "student" && (
+                      <FormField
+                        control={form.control}
+                        name="rollNumber"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Roll Number</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g., 22CS05, 24EE12"
+                                {...field}
+                                data-testid="input-rollnumber"
+                                onChange={(e) => {
+                                  field.onChange(e.target.value.toUpperCase());
+                                }}
+                              />
+                            </FormControl>
+                            <FormControl>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Format: YYbbNN (Year-Branch-Roll) • Example: 22CS05
+                              </p>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
 
                     <FormField
                       control={form.control}
@@ -213,6 +437,15 @@ export default function Signup() {
                         </FormItem>
                       )}
                     />
+
+                    <div className="bg-muted/50 rounded-lg p-4">
+                      <h4 className="font-medium text-sm mb-2">Security Notice:</h4>
+                      <ul className="text-xs text-muted-foreground space-y-1">
+                        <li>• Email verification is required before login</li>
+                        <li>• Roll numbers are unique and cannot be changed</li>
+                        <li>• One account per email and roll number</li>
+                      </ul>
+                    </div>
 
                     <Button
                       type="submit"

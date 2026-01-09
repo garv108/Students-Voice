@@ -9,6 +9,7 @@ import Home from "./pages/home";
 import Login from "./pages/login";
 import Signup from "./pages/signup";
 import Submit from "./pages/submit";
+import VerifyEmail from "./pages/verify-email";
 import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
 
@@ -16,6 +17,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
       <Route path="/submit" component={Submit} />

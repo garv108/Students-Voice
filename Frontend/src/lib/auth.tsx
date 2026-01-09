@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  signup: (username: string, email: string, password: string) => Promise<void>;
+  signup: (username: string, email: string, password: string, rollNumber?: string, userType?: "student" | "faculty") => Promise<void>;
   logout: () => Promise<void>;
   refetchUser: () => Promise<void>;
 }
@@ -56,15 +56,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   };
 
-  const signup = async (username: string, email: string, password: string) => {
-    const response = await apiRequest("POST", "/api/auth/signup", { username, email, password });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || "Signup failed");
-    }
-    setUser(data.user);
-  };
+  const signup = async (
+  username: string, 
+  email: string, 
+  password: string, 
+  rollNumber?: string, 
+  userType: "student" | "faculty" = "student"
+): Promise<void> => {
+  const response = await fetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email, password, rollNumber, userType }),
+  });
 
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Signup failed");
+  }
+
+  await response.json();
+};
   const logout = async () => {
     await apiRequest("POST", "/api/auth/logout", {});
     setUser(null);

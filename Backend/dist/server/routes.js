@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerRoutes = registerRoutes;
 const storage_1 = require("./storage");
@@ -11,6 +14,8 @@ const util_1 = require("util");
 const db_1 = require("./db");
 const schema_2 = require("../shared/schema");
 const drizzle_orm_1 = require("drizzle-orm");
+const notes_storage_1 = require("./notes-storage");
+const multer_1 = __importDefault(require("multer"));
 const scryptAsync = (0, util_1.promisify)(crypto_1.scrypt);
 async function hashPassword(password) {
     const salt = (0, crypto_1.randomBytes)(16).toString("hex");
@@ -435,6 +440,182 @@ async function registerRoutes(httpServer, app) {
         catch (error) {
             console.error("Unban user error:", error);
             res.status(500).json({ message: "Failed to unban user" });
+        }
+    });
+    // EduNotes Routes
+    // Public routes
+    app.get("/api/notes/categories", async (req, res) => {
+        try {
+            const categories = await db_1.db.select().from(schema_2.notesCategories);
+            res.json(categories);
+        }
+        catch (error) {
+            console.error("Get categories error:", error);
+            res.status(500).json({ message: "Failed to load categories" });
+        }
+    });
+    app.get("/api/notes/files/:categoryId", async (req, res) => {
+        try {
+            const { categoryId } = req.params;
+            const files = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.categoryId, categoryId));
+            res.json(files);
+        }
+        catch (error) {
+            console.error("Get files error:", error);
+            res.status(500).json({ message: "Failed to load files" });
+        }
+    });
+    app.get("/api/notes/bundles", async (req, res) => {
+        try {
+            const bundles = await db_1.db.select().from(schema_2.notesBundles);
+            res.json(bundles);
+        }
+        catch (error) {
+            console.error("Get bundles error:", error);
+            res.status(500).json({ message: "Failed to load bundles" });
+        }
+    });
+    // Authenticated routes
+    app.post("/api/notes/purchase", requireAuth, async (req, res) => {
+        try {
+            const { fileId, paymentProof } = req.body;
+            const userId = req.session.userId;
+            // Check if file exists
+            const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, fileId)).limit(1);
+            if (!file.length) {
+                return res.status(404).json({ message: "File not found" });
+            }
+            // Check if already purchased
+            const existingPurchase = await db_1.db.select().from(schema_2.notesPurchases)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.fileId, fileId)))
+                .limit(1);
+            if (existingPurchase.length) {
+                return res.status(400).json({ message: "Already purchased" });
+            }
+            // Create purchase record
+            const purchase = await db_1.db.insert(schema_2.notesPurchases).values({
+                buyerId: userId,
+                fileId,
+                paymentProof,
+                paymentStatus: "pending",
+            }).returning();
+            res.json({ purchase: purchase[0] });
+        }
+        catch (error) {
+            console.error("Purchase error:", error);
+            res.status(500).json({ message: "Failed to process purchase" });
+        }
+    });
+    app.get("/api/notes/my-purchases", requireAuth, async (req, res) => {
+        try {
+            const userId = req.session.userId;
+            const purchases = await db_1.db.select().from(schema_2.notesPurchases).where((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId));
+            res.json(purchases);
+        }
+        catch (error) {
+            console.error("Get purchases error:", error);
+            res.status(500).json({ message: "Failed to load purchases" });
+        }
+    });
+    app.get("/api/notes/download/:fileId", requireAuth, async (req, res) => {
+        try {
+            const { fileId } = req.params;
+            const userId = req.session.userId;
+            // Check if user has verified purchase
+            const purchase = await db_1.db.select().from(schema_2.notesPurchases)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.fileId, fileId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.paymentStatus, "verified")))
+                .limit(1);
+            if (!purchase.length) {
+                return res.status(403).json({ message: "Purchase not verified" });
+            }
+            // Get file info
+            const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, fileId)).limit(1);
+            if (!file.length) {
+                return res.status(404).json({ message: "File not found" });
+            }
+            // Generate signed URL
+            const signedUrl = await (0, notes_storage_1.getSignedUrl)(file[0].filePath);
+            res.json({ downloadUrl: signedUrl });
+        }
+        catch (error) {
+            console.error("Download error:", error);
+            res.status(500).json({ message: "Failed to generate download link" });
+        }
+    });
+    // Admin routes
+    const upload = (0, multer_1.default)({ limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
+    app.post("/api/admin/notes/upload", requireAdmin, upload.single('file'), async (req, res) => {
+        try {
+            const { categoryId, title, description, price } = req.body;
+            const file = req.file;
+            if (!file) {
+                return res.status(400).json({ message: "No file uploaded" });
+            }
+            // Upload to Supabase
+            const uploadResult = await (0, notes_storage_1.uploadFile)(file.buffer, file.originalname, categoryId);
+            // Save to database
+            const fileRecord = await db_1.db.insert(schema_2.notesFiles).values({
+                categoryId,
+                title,
+                description,
+                filePath: uploadResult.path,
+                fileSize: file.size,
+                price: parseFloat(price) || 0,
+            }).returning();
+            res.json({ file: fileRecord[0] });
+        }
+        catch (error) {
+            console.error("Upload error:", error);
+            res.status(500).json({ message: "Failed to upload file" });
+        }
+    });
+    app.post("/api/admin/notes/category", requireAdmin, async (req, res) => {
+        try {
+            const { name, branch, semester, subject } = req.body;
+            const category = await db_1.db.insert(schema_2.notesCategories).values({
+                name,
+                branch,
+                semester,
+                subject,
+            }).returning();
+            res.json({ category: category[0] });
+        }
+        catch (error) {
+            console.error("Create category error:", error);
+            res.status(500).json({ message: "Failed to create category" });
+        }
+    });
+    app.put("/api/admin/notes/purchase/:id/verify", requireAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { verified } = req.body;
+            await db_1.db.update(schema_2.notesPurchases)
+                .set({ paymentStatus: verified === true ? "verified" : "pending" })
+                .where((0, drizzle_orm_1.eq)(schema_2.notesPurchases.id, id));
+            res.json({ success: true });
+        }
+        catch (error) {
+            console.error("Verify purchase error:", error);
+            res.status(500).json({ message: "Failed to verify purchase" });
+        }
+    });
+    app.delete("/api/admin/notes/file/:id", requireAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            // Get file info
+            const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, id)).limit(1);
+            if (!file.length) {
+                return res.status(404).json({ message: "File not found" });
+            }
+            // Delete from Supabase
+            await (0, notes_storage_1.deleteFile)(file[0].filePath);
+            // Delete from database
+            await db_1.db.delete(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, id));
+            res.json({ success: true });
+        }
+        catch (error) {
+            console.error("Delete file error:", error);
+            res.status(500).json({ message: "Failed to delete file" });
         }
     });
     return httpServer;
