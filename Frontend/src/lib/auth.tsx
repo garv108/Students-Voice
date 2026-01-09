@@ -14,7 +14,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Get API URL from environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'https://student-complaint-backend.onrender.com';
+const API_URL = 'https://student-complaint-backend.onrender.com';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -57,24 +57,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signup = async (
-  username: string, 
-  email: string, 
-  password: string, 
-  rollNumber?: string, 
+  username: string,
+  email: string,
+  password: string,
+  rollNumber?: string,
   userType: "student" | "faculty" = "student"
 ): Promise<void> => {
-  const response = await fetch("/api/auth/signup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, email, password, rollNumber, userType }),
-  });
-
+  const response = await apiRequest("POST", "/api/auth/signup", { username, email, password, rollNumber, userType });
+  const data = await response.json();
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Signup failed");
+    throw new Error(data.message || "Signup failed");
   }
-
-  await response.json();
+  setUser(data.user);
 };
   const logout = async () => {
     await apiRequest("POST", "/api/auth/logout", {});
