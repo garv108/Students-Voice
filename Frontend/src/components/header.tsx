@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "../components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
-import { useAuth } from "../lib/auth";
+import { useUser, useClerk } from "@clerk/clerk-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,10 +11,21 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
-import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, BookOpen } from "lucide-react";import { useState } from "react";
+import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, BookOpen } from "lucide-react";
+import { useState } from "react";
+
+// Define type for Clerk user with publicMetadata
+type ClerkUser = {
+  id: string;
+  username?: string;
+  publicMetadata?: {
+    role?: string;
+  };
+};
 
 export function Header() {
-  const { user, logout } = useAuth();
+  const { user: clerkUser } = useUser() as { user: ClerkUser | null | undefined };
+  const { signOut } = useClerk();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -28,12 +39,14 @@ export function Header() {
     { href: "/admin", label: "Admin Dashboard", icon: LayoutDashboard },
   ];
 
-  const handleLogout = async () => {
-    await logout();
+  const handleLogout = () => {
+    signOut();
   };
 
-  const isAdmin = user?.role === "admin" || user?.role === "moderator";
-
+  // FIXED: Access role from publicMetadata
+  const userRole = clerkUser?.publicMetadata?.role;
+  const isAdmin = userRole === "admin" || userRole === "moderator";
+  
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -48,7 +61,7 @@ export function Header() {
 
             <nav className="hidden md:flex items-center gap-1">
               {navLinks.map((link) => {
-                if (link.requiresAuth && !user) return null;
+                if (link.requiresAuth && !clerkUser) return null;
                 const isActive = location === link.href;
                 return (
                   <Link key={link.href} href={link.href}>
@@ -87,19 +100,20 @@ export function Header() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
 
-            {user ? (
+            {clerkUser ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2" data-testid="button-user-menu">
                     <Avatar className="h-7 w-7">
                       <AvatarFallback className="text-xs">
-                      {user?.username ? user.username.slice(0, 2).toUpperCase() : 'US'}
+                        {clerkUser?.username ? clerkUser.username.slice(0, 2).toUpperCase() : 'US'}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="hidden sm:inline">{user.username}</span>
-                    {isAdmin && (
+                    <span className="hidden sm:inline">{clerkUser?.username || "User"}</span>
+                    {/* FIXED: Check if role exists before rendering Badge */}
+                    {isAdmin && userRole && (
                       <Badge variant="secondary" className="text-xs">
-                        {user.role}
+                        {userRole}
                       </Badge>
                     )}
                   </Button>
@@ -107,7 +121,7 @@ export function Header() {
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem className="gap-2" data-testid="menu-item-profile">
                     <User className="h-4 w-4" />
-                    <span>{user.username}</span>
+                    <span>{clerkUser?.username || "User"}</span>
                   </DropdownMenuItem>
                   {isAdmin && (
                     <>
@@ -161,7 +175,7 @@ export function Header() {
         {mobileMenuOpen && (
           <nav className="md:hidden py-4 border-t flex flex-col gap-1">
             {navLinks.map((link) => {
-              if (link.requiresAuth && !user) return null;
+              if (link.requiresAuth && !clerkUser) return null;
               const isActive = location === link.href;
               return (
                 <Link key={link.href} href={link.href} onClick={() => setMobileMenuOpen(false)}>

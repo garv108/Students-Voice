@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ThumbsUp, ThumbsDown, Flame, AlertTriangle, CheckCircle } from "lucide-react";
-import { useAuth } from "@/lib/auth";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useUser } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ReactionBarProps {
@@ -36,7 +36,7 @@ export function ReactionBar({
   userReactions = [],
   className,
 }: ReactionBarProps) {
-  const { user } = useAuth();
+  const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [localLiked, setLocalLiked] = useState(userLiked);

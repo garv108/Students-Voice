@@ -16,7 +16,7 @@ import {
   FormMessage,
   FormDescription,
 } from "../components/ui/form";
-import { useAuth } from "../lib/auth";
+import { useUser } from "@clerk/clerk-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/queryClient";
 import { useToast } from "../hooks/use-toast";
@@ -26,9 +26,7 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
-  ShieldAlert,
 } from "lucide-react";
-import { Link } from "wouter";
 
 const submitSchema = z.object({
   originalText: z
@@ -40,7 +38,7 @@ const submitSchema = z.object({
 type SubmitFormData = z.infer<typeof submitSchema>;
 
 export default function Submit() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -79,76 +77,8 @@ export default function Submit() {
     submitMutation.mutate(data);
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-          <div className="flex items-center justify-center min-h-[60vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-          <Card className="max-w-md mx-auto">
-            <CardContent className="p-8 text-center">
-              <ShieldAlert className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Authentication Required</h2>
-              <p className="text-muted-foreground mb-6">
-                You need to be logged in to submit a problem.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <Link href="/login">
-                  <Button data-testid="link-login">Log in</Button>
-                </Link>
-                <Link href="/signup">
-                  <Button variant="outline" data-testid="link-signup">
-                    Sign up
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
-
-  const isBanned = user.bannedUntil && new Date(user.bannedUntil) > new Date();
-
-  if (isBanned) {
-    const bannedUntil = new Date(user.bannedUntil!);
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-          <Card className="max-w-md mx-auto border-destructive">
-            <CardContent className="p-8 text-center">
-              <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Account Temporarily Banned</h2>
-              <p className="text-muted-foreground mb-4">
-                Your account has been temporarily suspended due to policy violations.
-              </p>
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                <span>
-                  Ban expires: {bannedUntil.toLocaleDateString()}{" "}
-                  {bannedUntil.toLocaleTimeString()}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
+  // REMOVED the auth check - ProtectedRoute handles it
+  // Also removed the banned user check for now
 
   return (
     <div className="min-h-screen bg-background">

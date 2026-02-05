@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.URGENCY_THRESHOLDS = exports.EMOJI_REACTIONS = exports.insertReactionSchema = exports.insertComplaintSchema = exports.loginSchema = exports.insertUserSchema = exports.bundlePurchasesRelations = exports.bundlePurchases = exports.notesBundlesRelations = exports.notesBundles = exports.notesPurchasesRelations = exports.notesPurchases = exports.notesFilesRelations = exports.notesFiles = exports.notesCategoriesRelations = exports.notesCategories = exports.clusterGroupsRelations = exports.clusterGroups = exports.abuseLogsRelations = exports.abuseLogs = exports.likesRelations = exports.likes = exports.reactionsRelations = exports.reactions = exports.complaintsRelations = exports.complaints = exports.usersRelations = exports.users = exports.paymentStatusEnum = exports.severityEnum = exports.urgencyEnum = exports.statusEnum = exports.roleEnum = void 0;
+exports.URGENCY_THRESHOLDS = exports.EMOJI_REACTIONS = exports.insertReactionSchema = exports.insertComplaintSchema = exports.resendVerificationSchema = exports.verifyEmailSchema = exports.loginSchema = exports.insertUserSchema = exports.bundlePurchasesRelations = exports.bundlePurchases = exports.notesBundlesRelations = exports.notesBundles = exports.notesPurchasesRelations = exports.notesPurchases = exports.notesFilesRelations = exports.notesFiles = exports.notesCategoriesRelations = exports.notesCategories = exports.clusterGroupsRelations = exports.clusterGroups = exports.abuseLogsRelations = exports.abuseLogs = exports.likesRelations = exports.likes = exports.reactionsRelations = exports.reactions = exports.complaintsRelations = exports.complaints = exports.usersRelations = exports.users = exports.userSessionsRelations = exports.userSessions = exports.paymentStatusEnum = exports.severityEnum = exports.urgencyEnum = exports.statusEnum = exports.roleEnum = void 0;
 exports.calculateUrgency = calculateUrgency;
 const drizzle_orm_1 = require("drizzle-orm");
 const pg_core_1 = require("drizzle-orm/pg-core");
@@ -10,19 +10,38 @@ exports.statusEnum = (0, pg_core_1.pgEnum)("status", ["pending", "in_progress", 
 exports.urgencyEnum = (0, pg_core_1.pgEnum)("urgency", ["normal", "urgent", "critical", "top_priority", "emergency"]);
 exports.severityEnum = (0, pg_core_1.pgEnum)("severity", ["good", "average", "poor", "bad", "worst", "critical"]);
 exports.paymentStatusEnum = (0, pg_core_1.pgEnum)("payment_status", ["pending", "verified", "rejected"]);
+// FIXED: Match existing user_sessions table structure
+exports.userSessions = (0, pg_core_1.pgTable)("user_sessions", {
+    sid: (0, pg_core_1.varchar)("sid").primaryKey(),
+    sess: (0, pg_core_1.json)("sess").notNull(),
+    expire: (0, pg_core_1.timestamp)("expire").notNull(),
+});
+exports.userSessionsRelations = (0, drizzle_orm_1.relations)(exports.userSessions, ({ one }) => ({
+    user: one(exports.users, {
+        fields: [exports.userSessions.sid], // Note: Using sid since no user_id column
+        references: [exports.users.id],
+    }),
+}));
 exports.users = (0, pg_core_1.pgTable)("users", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     username: (0, pg_core_1.text)("username").notNull().unique(),
     email: (0, pg_core_1.text)("email").notNull().unique(),
     password: (0, pg_core_1.text)("password").notNull(),
     role: (0, exports.roleEnum)("role").notNull().default("student"),
+    // New verification columns
+    rollNumber: (0, pg_core_1.text)("roll_number").unique(),
+    userType: (0, pg_core_1.text)("user_type").default("student"), // student, faculty, admin
+    emailVerified: (0, pg_core_1.boolean)("email_verified").default(false),
+    verificationToken: (0, pg_core_1.text)("verification_token"),
+    verificationTokenExpiry: (0, pg_core_1.timestamp)("verification_token_expiry"),
     bannedUntil: (0, pg_core_1.timestamp)("banned_until"),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
 });
-exports.usersRelations = (0, drizzle_orm_1.relations)(exports.users, ({ many }) => ({
+exports.usersRelations = (0, drizzle_orm_1.relations)(exports.users, ({ many, one }) => ({
     complaints: many(exports.complaints),
     reactions: many(exports.reactions),
     abuseLogs: many(exports.abuseLogs),
+    sessions: many(exports.userSessions),
 }));
 exports.complaints = (0, pg_core_1.pgTable)("complaints", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
@@ -218,14 +237,23 @@ exports.bundlePurchasesRelations = (0, drizzle_orm_1.relations)(exports.bundlePu
         references: [exports.users.id],
     }),
 }));
+// Validation schemas
 exports.insertUserSchema = zod_1.z.object({
     username: zod_1.z.string().min(1, "Username is required"),
     email: zod_1.z.string().email("Invalid email"),
     password: zod_1.z.string().min(6, "Password must be at least 6 characters"),
+    rollNumber: zod_1.z.string().regex(/^(2[2-6])(cs|ce|me|ee)\d{2}$/i, "Roll number must be in format: YYbbNN (e.g., 22CS05, 24EE12)"),
+    userType: zod_1.z.enum(["student", "faculty"]).default("student"),
 });
 exports.loginSchema = zod_1.z.object({
     username: zod_1.z.string().min(1, "Username is required"),
     password: zod_1.z.string().min(1, "Password is required"),
+});
+exports.verifyEmailSchema = zod_1.z.object({
+    token: zod_1.z.string().min(1, "Token is required"),
+});
+exports.resendVerificationSchema = zod_1.z.object({
+    email: zod_1.z.string().email("Invalid email"),
 });
 exports.insertComplaintSchema = zod_1.z.object({
     originalText: zod_1.z.string().min(1, "Complaint text is required"),

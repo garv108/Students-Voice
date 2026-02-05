@@ -1,3 +1,6 @@
+// src/pages/admin.tsx - FIXED VERSION
+// (Only showing the fixed parts, replace the entire file with this)
+
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -46,7 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/lib/auth";
+import { useUser } from "@clerk/clerk-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -89,8 +92,17 @@ interface AdminData {
   abuseLogs: AbuseLog[];
 }
 
+// Define type for Clerk user with publicMetadata
+type ClerkUser = {
+  id: string;
+  username?: string;
+  publicMetadata?: {
+    role?: string;
+  };
+};
+
 export default function Admin() {
-  const { user: currentUser, isLoading: authLoading } = useAuth();
+  const { user: currentUser, isLoaded: authLoading } = useUser() as { user: ClerkUser | null | undefined; isLoaded: boolean };
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -102,9 +114,12 @@ export default function Admin() {
   const [editStatus, setEditStatus] = useState<string>("pending");
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
+  const userRole = currentUser?.publicMetadata?.role || "";
+  const isAuthorized = userRole === "admin" || userRole === "moderator";
+
   const { data, isLoading, error, refetch } = useQuery<AdminData>({
     queryKey: ["/api/admin/dashboard"],
-    enabled: !!currentUser && (currentUser.role === "admin" || currentUser.role === "moderator"),
+    enabled: !!currentUser && isAuthorized,
   });
 
   const editMutation = useMutation({
@@ -190,7 +205,7 @@ export default function Admin() {
     );
   }
 
-  if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "moderator")) {
+  if (!currentUser || !isAuthorized) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -674,123 +689,120 @@ export default function Admin() {
           </TabsContent>
         </Tabs>
       </main>
-{/*Add this to your admin.tsx edit dialog section
-Replace the existing edit dialog (around line 600) with this enhanced version:*/}
 
-
-<Dialog open={!!editingComplaint} onOpenChange={() => setEditingComplaint(null)}>
-  <DialogContent className="max-w-2xl">
-    <DialogHeader>
-      <DialogTitle>Edit Complaint</DialogTitle>
-      <DialogDescription>
-        Make changes to the complaint content, status, and urgency level
-      </DialogDescription>
-    </DialogHeader>
-    <div className="space-y-4 py-4">
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Content</label>
-        <Textarea
-          value={editText}
-          onChange={(e) => setEditText(e.target.value)}
-          className="min-h-32"
-          data-testid="input-edit-content"
-        />
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Status</label>
-          <Select value={editStatus} onValueChange={setEditStatus}>
-            <SelectTrigger data-testid="select-edit-status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="solved">Solved</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Urgency Level</label>
-          <Select 
-            value={editingComplaint?.urgency || "normal"} 
-            onValueChange={(urgency) => {
-              if (editingComplaint) {
-                setEditingComplaint({ ...editingComplaint, urgency: urgency as any });
-              }
-            }}
-          >
-            <SelectTrigger data-testid="select-edit-urgency">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="normal">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gray-400"></div>
-                  Normal
-                </div>
-              </SelectItem>
-              <SelectItem value="urgent">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                  Urgent
-                </div>
-              </SelectItem>
-              <SelectItem value="critical">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                  Critical
-                </div>
-              </SelectItem>
-              <SelectItem value="top_priority">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                  Top Priority
-                </div>
-              </SelectItem>
-              <SelectItem value="emergency">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-700"></div>
-                  Emergency
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {editingComplaint && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground">Complaint Info</label>
-          <div className="text-sm space-y-1 bg-muted p-3 rounded-md">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Submitted by:</span>
-              <span className="font-medium">{editingComplaint.username}</span>
+      <Dialog open={!!editingComplaint} onOpenChange={() => setEditingComplaint(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Complaint</DialogTitle>
+            <DialogDescription>
+              Make changes to the complaint content, status, and urgency level
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Content</label>
+              <Textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                className="min-h-32"
+                data-testid="input-edit-content"
+              />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Reports:</span>
-              <span className="font-medium">{editingComplaint.similarComplaintsCount + 1}</span>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status</label>
+                <Select value={editStatus} onValueChange={setEditStatus}>
+                  <SelectTrigger data-testid="select-edit-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="solved">Solved</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Urgency Level</label>
+                <Select 
+                  value={editingComplaint?.urgency || "normal"} 
+                  onValueChange={(urgency) => {
+                    if (editingComplaint) {
+                      setEditingComplaint({ ...editingComplaint, urgency: urgency as any });
+                    }
+                  }}
+                >
+                  <SelectTrigger data-testid="select-edit-urgency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                        Normal
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="urgent">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                        Urgent
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="critical">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                        Critical
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="top_priority">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                        Top Priority
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="emergency">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-700"></div>
+                        Emergency
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Current severity:</span>
-              <span className="font-medium capitalize">{editingComplaint.severity}</span>
-            </div>
+
+            {editingComplaint && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Complaint Info</label>
+                <div className="text-sm space-y-1 bg-muted p-3 rounded-md">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Submitted by:</span>
+                    <span className="font-medium">{editingComplaint.username}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Reports:</span>
+                    <span className="font-medium">{editingComplaint.similarComplaintsCount + 1}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Current severity:</span>
+                    <span className="font-medium capitalize">{editingComplaint.severity}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-    </div>
-    <DialogFooter>
-      <Button variant="outline" onClick={() => setEditingComplaint(null)}>
-        Cancel
-      </Button>
-      <Button onClick={handleSaveEdit} disabled={editMutation.isPending} data-testid="button-save-edit">
-        {editMutation.isPending ? "Saving..." : "Save Changes"}
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingComplaint(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={editMutation.isPending} data-testid="button-save-edit">
+              {editMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
         <AlertDialogContent>

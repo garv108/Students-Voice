@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "../lib/auth";
+import { useUser } from "@clerk/clerk-react";
 import { apiRequestJson } from "../lib/queryClient";
 import { Header } from "../components/header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -56,7 +56,7 @@ const BRANCHES = ["CS", "Civil", "Mechanical", "Electrical"];
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export default function NotesPage() {
-  const { user } = useAuth();
+  const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedBranch, setSelectedBranch] = useState<string>("all");

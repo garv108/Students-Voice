@@ -24,8 +24,8 @@ import { SeverityBadge } from "./severity-badge";
 import { UrgencyBadge } from "./urgency-badge";
 import { StatusBadge } from "./status-badge";
 import { ReactionBar } from "./reaction-bar";
-import { useAuth } from "@/lib/auth";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUser, useClerk } from "@clerk/clerk-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -58,13 +58,13 @@ export function ComplaintCard({
   showActions = true,
   className,
 }: ComplaintCardProps) {
-  const { user } = useAuth();
+  const { user, isLoaded } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const isOwner = user?.id === complaint.userId;
-  const isAdmin = user?.role === "admin" || user?.role === "moderator";
+  const isAdmin = user?.publicMetadata?.role === "admin" || user?.publicMetadata?.role === "moderator";
   const canDelete = isOwner || isAdmin;
   const canMarkSolved = isAdmin;
 
