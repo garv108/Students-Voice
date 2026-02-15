@@ -2,7 +2,7 @@ import { SignIn } from "@clerk/clerk-react";
 import { Header } from "../components/header";
 import Footer from "../components/footer";
 
-export default function VerifyEmail() {
+export default function SSOCallback() {
   return (
     <div className="min-h-screen bg-background">
       <Header />

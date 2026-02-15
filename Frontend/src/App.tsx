@@ -4,6 +4,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useUser } from "@clerk/clerk-react";
+// Add these imports if not already present
+import VerifyEmail from "./pages/verify-email";
+import SSOCallback from "./pages/sso-callback";
+
+
 
 // Pages
 import Landing from "./pages/landing";
@@ -48,6 +53,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/sso-callback" component={SSOCallback} />
       <Route path="/signup" component={Signup} />
       <Route path="/" component={Home} />
       <Route path="/submit">
