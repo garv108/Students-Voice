@@ -244,11 +244,11 @@ if (process.env.NODE_ENV === "development" && (!process.env.DATABASE_URL || proc
   } else {
     // Real database connection
     console.log("🔗 Connecting to PostgreSQL database...");
-    pool = new Pool({ 
+    pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      ssl: {
+        rejectUnauthorized: false,
+      },
     });
     
     db = drizzle(pool, { schema });
