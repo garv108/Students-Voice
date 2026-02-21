@@ -1,10 +1,9 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useUser } from "@clerk/clerk-react";
-import { Redirect } from "wouter";
 
 import VerifyEmail from "./pages/verify-email";
 import SSOCallback from "./pages/sso-callback";
@@ -21,7 +20,7 @@ import NotFound from "./pages/not-found";
 
 
 // =============================
-// Protected Route
+// Protected Route (Login Only)
 // =============================
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isLoaded, isSignedIn } = useUser();
@@ -43,13 +42,41 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
 
 // =============================
+// Admin Route (Role-Based)
+// =============================
+function AdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { isLoaded, isSignedIn, user } = useUser();
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Redirect to="/" />;
+  }
+
+  const role = user?.publicMetadata?.role;
+
+  if (role !== "admin" && role !== "moderator") {
+    return <Redirect to="/dashboard" />;
+  }
+
+  return <Component />;
+}
+
+
+// =============================
 // Router
 // =============================
 function Router() {
   return (
     <Switch>
 
-      {/* Intro / Marketing Page */}
+      {/* Landing / Intro */}
       <Route path="/" component={Landing} />
 
       {/* Auth Routes */}
@@ -76,8 +103,9 @@ function Router() {
         <ProtectedRoute component={Notes} />
       </Route>
 
+      {/* Admin Only */}
       <Route path="/admin">
-        <ProtectedRoute component={Admin} />
+        <AdminRoute component={Admin} />
       </Route>
 
       {/* Fallback */}
