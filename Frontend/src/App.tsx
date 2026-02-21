@@ -1,14 +1,12 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useUser } from "@clerk/clerk-react";
-// Add these imports if not already present
+
 import VerifyEmail from "./pages/verify-email";
 import SSOCallback from "./pages/sso-callback";
-
-
 
 // Pages
 import Landing from "./pages/landing";
@@ -19,15 +17,11 @@ import Submit from "./pages/submit";
 import Notes from "./pages/notes";
 import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
-import { Header } from "./components/header";
-import { Card, CardContent } from "./components/ui/card";
-import { Button } from "./components/ui/button";
-import { AlertTriangle } from "lucide-react";
-import { Link } from "wouter";
 
 // Protected Route Component
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isLoaded, isSignedIn } = useUser();
+  const [, setLocation] = useLocation();
 
   if (!isLoaded) {
     return (
@@ -38,35 +32,46 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!isSignedIn) {
-    return <Landing />;
+    setLocation("/");
+    return null;
   }
 
-  return <Component />;
-}
-
-// Public Route Component (for pages everyone can see)
-function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   return <Component />;
 }
 
 function Router() {
   return (
     <Switch>
+
+      {/* Intro page as default */}
+      <Route path="/" component={Landing} />
+
+      {/* Auth routes */}
       <Route path="/login" component={Login} />
+      <Route path="/signup" component={Signup} />
       <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/sso-callback" component={SSOCallback} />
-      <Route path="/signup" component={Signup} />
-      <Route path="/" component={Home} />
+
+      {/* Dashboard moved here */}
+      <Route path="/dashboard">
+        <ProtectedRoute component={Home} />
+      </Route>
+
+      {/* Protected routes */}
       <Route path="/submit">
         <ProtectedRoute component={Submit} />
       </Route>
+
       <Route path="/notes">
         <ProtectedRoute component={Notes} />
       </Route>
+
       <Route path="/admin">
         <ProtectedRoute component={Admin} />
       </Route>
+
       <Route component={NotFound} />
+
     </Switch>
   );
 }

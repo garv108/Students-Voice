@@ -30,10 +30,10 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
-    { href: "/", label: "Leaderboard", icon: Home },
-    { href: "/notes", label: "EduNotes", icon: BookOpen },
-    { href: "/submit", label: "Submit Problem", icon: Plus, requiresAuth: true },
-  ];
+  { href: "/dashboard", label: "Leaderboard", icon: Home },
+  { href: "/notes", label: "EduNotes", icon: BookOpen },
+  { href: "/submit", label: "Submit Problem", icon: Plus, requiresAuth: true },
+];
 
   const adminLinks = [
     { href: "/admin", label: "Admin Dashboard", icon: LayoutDashboard },
