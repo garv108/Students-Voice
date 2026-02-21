@@ -4,6 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Header } from "@/components/header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, MessageSquare, TrendingUp, Users, CheckCircle } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+
+const { isSignedIn, isLoaded } = useUser();
+const [, setLocation] = useLocation();
+
+useEffect(() => {
+  if (isLoaded && isSignedIn) {
+    setLocation("/dashboard");
+  }
+}, [isLoaded, isSignedIn, setLocation]);
 
 export default function Landing() {
   return (
