@@ -1,9 +1,10 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useUser } from "@clerk/clerk-react";
+import { Redirect } from "wouter";
 
 import VerifyEmail from "./pages/verify-email";
 import SSOCallback from "./pages/sso-callback";
@@ -18,10 +19,12 @@ import Notes from "./pages/notes";
 import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
 
-// Protected Route Component
+
+// =============================
+// Protected Route
+// =============================
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isLoaded, isSignedIn } = useUser();
-  const [, setLocation] = useLocation();
 
   if (!isLoaded) {
     return (
@@ -32,32 +35,39 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!isSignedIn) {
-    setLocation("/");
-    return null;
+    return <Redirect to="/" />;
   }
 
   return <Component />;
 }
 
+
+// =============================
+// Router
+// =============================
 function Router() {
   return (
     <Switch>
 
-      {/* Intro page as default */}
+      {/* Intro / Marketing Page */}
       <Route path="/" component={Landing} />
 
-      {/* Auth routes */}
+      {/* Auth Routes */}
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
       <Route path="/verify-email" component={VerifyEmail} />
-      <Route path="/sso-callback" component={SSOCallback} />
 
-      {/* Dashboard moved here */}
+      {/* Clerk OAuth Callbacks */}
+      <Route path="/sso-callback" component={SSOCallback} />
+      <Route path="/signup/sso-callback" component={SSOCallback} />
+      <Route path="/login/sso-callback" component={SSOCallback} />
+
+      {/* Dashboard */}
       <Route path="/dashboard">
         <ProtectedRoute component={Home} />
       </Route>
 
-      {/* Protected routes */}
+      {/* Protected Routes */}
       <Route path="/submit">
         <ProtectedRoute component={Submit} />
       </Route>
@@ -70,12 +80,17 @@ function Router() {
         <ProtectedRoute component={Admin} />
       </Route>
 
+      {/* Fallback */}
       <Route component={NotFound} />
 
     </Switch>
   );
 }
 
+
+// =============================
+// App Wrapper
+// =============================
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
