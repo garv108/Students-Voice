@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "../components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
-import { useUser, useClerk } from "@clerk/clerk-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,54 +12,45 @@ import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, BookOpen } from "lucide-react";
 import { useState } from "react";
-// Define type for Clerk user with publicMetadata
-type ClerkUser = {
-  id: string;
-  username?: string;
-  publicMetadata?: {
-    role?: string;
-  };
-};
+import { useAuth } from "@/lib/auth";
 
 export function Header() {
-  const { user: clerkUser } = useUser() as { user: ClerkUser | null | undefined };
-  const { signOut } = useClerk();
+  const { user, logout } = useAuth();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
-  { href: "/dashboard", label: "Leaderboard", icon: Home },
-  { href: "/notes", label: "EduNotes", icon: BookOpen },
-  { href: "/submit", label: "Submit Problem", icon: Plus, requiresAuth: true },
-];
+    { href: "/dashboard", label: "Leaderboard", icon: Home },
+    { href: "/notes", label: "EduNotes", icon: BookOpen },
+    { href: "/submit", label: "Submit Problem", icon: Plus, requiresAuth: true },
+  ];
 
   const adminLinks = [
     { href: "/admin", label: "Admin Dashboard", icon: LayoutDashboard },
   ];
 
   const handleLogout = () => {
-    signOut();
+    logout();
   };
 
-  // FIXED: Access role from publicMetadata
-  const userRole = clerkUser?.publicMetadata?.role;
+  const userRole = user?.role;
   const isAdmin = userRole === "admin" || userRole === "moderator";
-  
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-center gap-6">
-            <Link href={clerkUser ? "/dashboard" : "/"} className="flex items-center gap-2">              
-            <Shield className="h-6 w-6 text-primary" />
+            <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2">
+              <Shield className="h-6 w-6 text-primary" />
               <span className="font-semibold text-lg hidden sm:inline" data-testid="text-brand">
-                StudentVoice
+                Student'sVoice
               </span>
             </Link>
 
             <nav className="hidden md:flex items-center gap-1">
               {navLinks.map((link) => {
-                if (link.requiresAuth && !clerkUser) return null;
+                if (link.requiresAuth && !user) return null;
                 const isActive = location === link.href;
                 return (
                   <Link key={link.href} href={link.href}>
@@ -99,17 +89,16 @@ export function Header() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
 
-            {clerkUser ? (
+            {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2" data-testid="button-user-menu">
                     <Avatar className="h-7 w-7">
                       <AvatarFallback className="text-xs">
-                        {clerkUser?.username ? clerkUser.username.slice(0, 2).toUpperCase() : 'US'}
+                        {user?.username ? user.username.slice(0, 2).toUpperCase() : "US"}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="hidden sm:inline">{clerkUser?.username || "User"}</span>
-                    {/* FIXED: Check if role exists before rendering Badge */}
+                    <span className="hidden sm:inline">{user?.username || "User"}</span>
                     {isAdmin && userRole && (
                       <Badge variant="secondary" className="text-xs">
                         {userRole}
@@ -120,7 +109,7 @@ export function Header() {
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem className="gap-2" data-testid="menu-item-profile">
                     <User className="h-4 w-4" />
-                    <span>{clerkUser?.username || "User"}</span>
+                    <span>{user?.username || "User"}</span>
                   </DropdownMenuItem>
                   {isAdmin && (
                     <>
@@ -174,7 +163,7 @@ export function Header() {
         {mobileMenuOpen && (
           <nav className="md:hidden py-4 border-t flex flex-col gap-1">
             {navLinks.map((link) => {
-              if (link.requiresAuth && !clerkUser) return null;
+              if (link.requiresAuth && !user) return null;
               const isActive = location === link.href;
               return (
                 <Link key={link.href} href={link.href} onClick={() => setMobileMenuOpen(false)}>

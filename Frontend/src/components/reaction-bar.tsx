@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { ThumbsUp, ThumbsDown, Flame, AlertTriangle, CheckCircle } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
 interface ReactionBarProps {
@@ -36,7 +36,7 @@ export function ReactionBar({
   userReactions = [],
   className,
 }: ReactionBarProps) {
-  const { user } = useUser();
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [localLiked, setLocalLiked] = useState(userLiked);
@@ -80,15 +80,15 @@ export function ReactionBar({
       toast({ title: "Please log in to react", variant: "destructive" });
       return;
     }
-    
+
     const wasLiked = localLiked;
     const wasDisliked = localDisliked;
-    
+
     setLocalLiked(!wasLiked);
     if (wasDisliked) setLocalDisliked(false);
     setLocalLikesCount((prev) => prev + (wasLiked ? -1 : 1));
     if (wasDisliked) setLocalDislikesCount((prev) => prev - 1);
-    
+
     try {
       await likeMutation.mutateAsync();
     } catch {
@@ -104,15 +104,15 @@ export function ReactionBar({
       toast({ title: "Please log in to react", variant: "destructive" });
       return;
     }
-    
+
     const wasLiked = localLiked;
     const wasDisliked = localDisliked;
-    
+
     setLocalDisliked(!wasDisliked);
     if (wasLiked) setLocalLiked(false);
     setLocalDislikesCount((prev) => prev + (wasDisliked ? -1 : 1));
     if (wasLiked) setLocalLikesCount((prev) => prev - 1);
-    
+
     try {
       await dislikeMutation.mutateAsync();
     } catch {
@@ -128,12 +128,12 @@ export function ReactionBar({
       toast({ title: "Please log in to react", variant: "destructive" });
       return;
     }
-    
+
     const hasReaction = localReactions.includes(emoji);
     setLocalReactions((prev) =>
       hasReaction ? prev.filter((e) => e !== emoji) : [...prev, emoji]
     );
-    
+
     try {
       await reactMutation.mutateAsync(emoji);
     } catch {

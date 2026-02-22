@@ -16,7 +16,7 @@ import {
   FormMessage,
   FormDescription,
 } from "../components/ui/form";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "@/lib/auth";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/queryClient";
 import { useToast } from "../hooks/use-toast";
@@ -38,7 +38,7 @@ const submitSchema = z.object({
 type SubmitFormData = z.infer<typeof submitSchema>;
 
 export default function Submit() {
-  const { user } = useUser();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();

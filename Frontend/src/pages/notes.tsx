@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "@/lib/auth";
 import { apiRequestJson } from "../lib/queryClient";
 import { Header } from "../components/header";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -56,7 +56,7 @@ const BRANCHES = ["CS", "Civil", "Mechanical", "Electrical"];
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export default function NotesPage() {
-  const { user } = useUser();
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
@@ -84,7 +84,7 @@ export default function NotesPage() {
   // Fetch user's purchases
   const { data: purchases = [] } = useQuery({
     queryKey: ["notes-purchases"],
-    queryFn: () => user ? apiRequestJson<NotesPurchase[]>("GET", "/api/notes/my-purchases") : Promise.resolve([]),
+    queryFn: () => !!user ? apiRequestJson<NotesPurchase[]>("GET", "/api/notes/my-purchases") : Promise.resolve([]),
     enabled: !!user,
   });
 
@@ -350,7 +350,7 @@ export default function NotesPage() {
 
               <div className="border rounded-lg p-4 space-y-3">
                 <div className="text-center">
-                  <img 
+                  <img
                     src="https://kcvdlnlorcblxbnlcfeu.supabase.co/storage/v1/object/sign/EduNotes/UPI%20QR%20Code.jpg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV82ZWU4M2I3YS0zYTUxLTQ5YzUtYTExNS01N2ZjNDM3MjYzNGUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJFZHVOb3Rlcy9VUEkgUVIgQ29kZS5qcGciLCJpYXQiOjE3Njc4Mjc4NTMsImV4cCI6MTc5OTM2Mzg1M30.4a5cO-6XOhbtrOzA65JCFvlUp3JfXJ4fqQe5AnKLdIc"
                     alt="QR Code"
                     className="w-48 h-48 mx-auto"

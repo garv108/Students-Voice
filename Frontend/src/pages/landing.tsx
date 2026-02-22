@@ -16,13 +16,13 @@ import {
   Users,
   CheckCircle,
 } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "@/lib/auth";
 
 export default function Landing() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { user, isLoading } = useAuth();
 
   // 🔥 If user is logged in → redirect to dashboard
-  if (isLoaded && isSignedIn) {
+  if (!isLoading && !!user) {
     return <Redirect to="/dashboard" />;
   }
 
@@ -36,7 +36,7 @@ export default function Landing() {
           <div className="max-w-4xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6">
               <Shield className="h-4 w-4" />
-              StudentVoice Platform
+              Student'sVoice Platform
             </div>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
               Your Campus. Your <span className="text-primary">Voice.</span>
@@ -133,7 +133,7 @@ export default function Landing() {
 
       <footer className="border-t py-8 px-4 text-center text-sm text-muted-foreground">
         <p>
-          © {new Date().getFullYear()} StudentVoice. Empowering student communities.
+          © {new Date().getFullYear()} Student'sVoice. Empowering student communities.
         </p>
       </footer>
     </div>
