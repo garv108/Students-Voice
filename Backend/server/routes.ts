@@ -13,6 +13,8 @@ import { eq, and, or } from "drizzle-orm";
 import { uploadFile, getSignedUrl, deleteFile, getFileMetadata } from "./notes-storage";
 import multer from "multer";
 
+ 
+
 const scryptAsync = promisify(scrypt);
 
 async function hashPassword(password: string): Promise<string> {
@@ -387,8 +389,8 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/dashboard", async (req, res) => {
-    try {
+app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
+      try {
       const stats = await storage.getAdminStats();
       const complaints = await storage.getComplaints();
       const users = await storage.getAllUsers();

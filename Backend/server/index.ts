@@ -50,11 +50,7 @@ app.set('trust proxy', 1);
 
 // CORS Configuration - Fixed for production
 const allowedOrigins = [
-  // Split FRONTEND_URL if it contains multiple origins
-  ...(process.env.FRONTEND_URL ? 
-      process.env.FRONTEND_URL.split(',').map(s => s.trim()) :
-      ["http://localhost:5173"]
-  ),
+  "http://localhost:5173",
   "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
   "https://students-voice-bay.vercel.app",
   "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
