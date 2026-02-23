@@ -261,16 +261,16 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
   }),
 }));
 
-// Validation schemas
+// Validation schemas (UPDATED)
+
 export const insertUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  rollNumber: z.string().regex(
-    /^(2[2-6])(cs|ce|me|ee)\d{2}$/i,
-    "Roll number must be in format: YYbbNN (e.g., 22CS05, 24EE12)"
-  ),
-  userType: z.enum(["student", "faculty"]).default("student"),
+
+  // 🔥 Made optional to fix signup mismatch
+  rollNumber: z.string().optional(),
+  userType: z.enum(["student", "faculty"]).optional(),
 });
 
 export const loginSchema = z.object({
