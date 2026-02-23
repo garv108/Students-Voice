@@ -29,13 +29,6 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   role: roleEnum("role").notNull().default("student"),
-  
-  // New verification columns
-  rollNumber: text("roll_number").unique(),
-  userType: text("user_type").default("student"), // student, faculty, admin
-  emailVerified: boolean("email_verified").default(false),
-  verificationToken: text("verification_token"),
-  verificationTokenExpiry: timestamp("verification_token_expiry"),  
   bannedUntil: timestamp("banned_until"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -260,6 +253,7 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
     references: [users.id],
   }),
 }));
+
 
 // Validation schemas (UPDATED)
 
