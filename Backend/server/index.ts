@@ -17,11 +17,10 @@ import { promisify } from "util";
 
 // ========== EARLY DEBUG ==========
 console.log("🔴 EARLY DEBUG: Server starting");
-console.log("File version: 2025-01-07-cookie-fix");
+console.log("File version: 2026-02-25-cors-fix");
 console.log("Current time:", new Date().toISOString());
 // ========== END EARLY DEBUG ==========
 
-// Type declarations
 declare global {
   namespace Express {
     interface Request {
@@ -40,193 +39,163 @@ async function hashPassword(password: string): Promise<string> {
 
 // Validate required environment variables
 const sessionSecret = process.env.SESSION_SECRET;
-if (!sessionSecret && process.env.NODE_ENV === 'production') {
+if (!sessionSecret && process.env.NODE_ENV === "production") {
   console.error("🚨 FATAL ERROR: SESSION_SECRET environment variable is required for production");
   process.exit(1);
 }
 
 const app = express();
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
-// CORS Configuration - Fixed for production
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://students-voice-ll2onm3wl-garvs-projects-1900e5d8.vercel.app",
-  "https://students-voice-bay.vercel.app",
-  "https://students-voice-o20ai0bql-garvs-projects-1900e5d8.vercel.app",
-];
-// Remove duplicates AND trailing slashes from array
-const normalizeOrigin = (origin: string) => origin.replace(/\/$/, ''); // Remove trailing slash
-const uniqueOrigins = [...new Set(allowedOrigins.filter(Boolean).map(normalizeOrigin))];
-console.log("🌐 Allowed CORS origins:", uniqueOrigins);
+// CORS: allow localhost + any students-voice Vercel deployment (preview URLs change every push)
+function isAllowedOrigin(origin: string): boolean {
+  if (origin === "http://localhost:5173") return true;
+  if (origin === "http://localhost:3000") return true;
+  // Allow the stable production Vercel URL
+  if (origin === "https://students-voice-bay.vercel.app") return true;
+  // Allow ALL Vercel preview deployments for this project (pattern match)
+  if (/^https:\/\/students-voice(-[a-z0-9]+)*(-garvs-projects-[a-z0-9]+)?\.vercel\.app$/.test(origin)) return true;
+  return false;
+}
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, postman)
-    if (!origin) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log("🔓 No origin - allowing request");
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (curl, Postman, server-to-server)
+      if (!origin) {
+        return callback(null, true);
       }
-      return callback(null, true);
-    }
-
-    if (uniqueOrigins.includes(origin)) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ CORS allowed for: ${origin}`);
+      if (isAllowedOrigin(origin)) {
+        console.log(`✅ CORS allowed: ${origin}`);
+        callback(null, true);
+      } else {
+        console.warn(`❌ CORS blocked: ${origin}`);
+        callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
       }
-      callback(null, true);
-    } else {
-      console.warn(`❌ CORS blocked: ${origin}`);
-      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
-    }
-  },
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Set-Cookie'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
-
-// Security middleware - Helmet.js
-app.use(helmet({
-  // Basic security headers
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", ...uniqueOrigins],
-      frameSrc: ["'none'"],
-      objectSrc: ["'none'"],
-      upgradeInsecureRequests: [],
     },
-  },
-  crossOriginEmbedderPolicy: false, // Required for some third-party services
-  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resources
-}));
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    exposedHeaders: ["Set-Cookie"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  })
+);
 
-// Additional security headers
-app.use(helmet.xssFilter()); // XSS protection
-app.use(helmet.noSniff()); // Prevent MIME type sniffing
-app.use(helmet.ieNoOpen()); // IE security
-app.use(helmet.frameguard({ action: "deny" })); // Prevent clickjacking
-app.use(helmet.hidePoweredBy()); // Hide Express signature
+// Security middleware
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "https:", "http:"],
+        connectSrc: ["'self'", "https://*.vercel.app", "http://localhost:5173"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: [],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+
+app.use(helmet.xssFilter());
+app.use(helmet.noSniff());
+app.use(helmet.ieNoOpen());
+app.use(helmet.frameguard({ action: "deny" }));
+app.use(helmet.hidePoweredBy());
 
 console.log("🔒 Helmet.js security headers enabled");
 
-// Compression middleware
 app.use(compression());
 console.log("⚡ Compression enabled");
 
-// JSON parsing with validation for invalid JSON
-app.use(express.json({
-  verify: (req: any, res: Response, buf: Buffer) => {
-    try {
-      if (buf && buf.length > 0) {
-        JSON.parse(buf.toString());
+// JSON parsing
+app.use(
+  express.json({
+    verify: (req: any, _res: Response, buf: Buffer) => {
+      try {
+        if (buf && buf.length > 0) {
+          JSON.parse(buf.toString());
+        }
+      } catch (e: any) {
+        console.error("❌ Invalid JSON received:", {
+          url: req.url,
+          method: req.method,
+          error: e.message,
+        });
+        req.rawBody = buf?.toString() || "";
       }
-    } catch(e: any) {
-      console.error("❌ Invalid JSON received:", {
-        url: req.url,
-        method: req.method,
-        contentLength: buf?.length || 0,
-        contentType: req.headers['content-type'],
-        first100Chars: buf?.toString().substring(0, 100),
-        error: e.message
-      });
-
-      // Store the raw buffer for debugging
-      req.rawBody = buf?.toString() || '';
-    }
-  }
-}));
+    },
+  })
+);
 
 app.use(express.urlencoded({ extended: true }));
 
-// JSON parsing error handler
+// JSON parse error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  if (err instanceof SyntaxError && 'body' in err) {
-    console.error('JSON Syntax Error:', {
-      url: req.url,
-      method: req.method,
-      error: err.message,
-      rawBody: req.rawBody?.substring(0, 200)
-    });
+  if (err instanceof SyntaxError && "body" in err) {
     return res.status(400).json({
       success: false,
-      error: 'Invalid JSON format',
-      message: 'Please check your request body for JSON syntax errors',
-      help: 'Ensure your request has proper JSON syntax with double quotes for keys and values'
+      error: "Invalid JSON format",
+      message: "Please check your request body for JSON syntax errors",
     });
   }
   next(err);
 });
 
-// Additional security headers middleware
+// API cache-control headers
 app.use((req: Request, res: Response, next: NextFunction) => {
-  // Prevent caching of sensitive data (API responses)
-  if (req.path.startsWith('/api')) {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('Surrogate-Control', 'no-store');
+  if (req.path.startsWith("/api")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
   }
-
-  // Referrer policy for privacy
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-  // Permissions policy - restrict browser features
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
-
-  // Expect-CT header (phasing out but still useful)
-  res.setHeader('Expect-CT', 'max-age=86400, enforce');
-
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()");
   next();
 });
 
 console.log("🔒 Additional security headers enabled");
 
-// Rate limiting configuration
+// Rate limiting
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: { error: "Too many requests, please try again later." },
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 10 : 100, // More lenient in dev
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === "production" ? 10 : 100,
   message: { error: "Too many authentication attempts, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true, // Don't count successful logins
-  keyGenerator: (req) => {
-    // Use IP + user-agent for better rate limiting
-    return `${req.ip}-${req.headers['user-agent']}`;
-  }
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `${req.ip}-${req.headers["user-agent"]}`,
 });
 
 const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // More generous for admin operations
+  windowMs: 15 * 60 * 1000,
+  max: 300,
   message: { error: "Too many admin requests, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Apply rate limiting
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 app.use("/api/admin", adminLimiter);
-app.use("/api", generalLimiter); // Apply to all other API routes
+app.use("/api", generalLimiter);
 
 console.log("🔒 Rate limiting enabled");
 
-// PostgreSQL session store configuration
+// Session configuration
 const PostgresSessionStore = pgSession(session);
 
 const sessionConfig: session.SessionOptions = {
@@ -234,58 +203,50 @@ const sessionConfig: session.SessionOptions = {
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: '/',
+    path: "/",
   },
-  name: 'studentvoice.sid',
+  name: "studentvoice.sid",
   proxy: true,
 };
 
-// Debug before setting store
 console.log("=== SESSION CONFIG DEBUG ===");
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("Cookie secure:", sessionConfig.cookie?.secure);
 console.log("Cookie sameSite:", sessionConfig.cookie?.sameSite);
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
-if (process.env.DATABASE_URL) {
-  console.log("DATABASE_URL sample:", process.env.DATABASE_URL.substring(0, 30) + "...");
-}
 console.log("SESSION_SECRET exists:", !!process.env.SESSION_SECRET);
-if (process.env.SESSION_SECRET) {
-  console.log("SESSION_SECRET length:", process.env.SESSION_SECRET.length);
-}
 
-// Set PostgreSQL store if DATABASE_URL exists and looks valid
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgresql://')) {
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith("postgresql://")) {
   console.log("✅ Setting up PostgreSQL session store");
   sessionConfig.store = new PostgresSessionStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: true,
-    tableName: 'user_sessions',
+    tableName: "user_sessions",
     pruneSessionInterval: 60 * 60,
   });
 } else {
   console.warn("⚠️ No valid DATABASE_URL, using MemoryStore");
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     console.error("🚨 PRODUCTION WARNING: Using MemoryStore! Add DATABASE_URL to Render environment.");
   }
 }
 
 app.use(session(sessionConfig));
-console.log(`🔐 Session store: ${sessionConfig.store ? 'PostgreSQL' : 'MemoryStore'}`);
+console.log(`🔐 Session store: ${sessionConfig.store ? "PostgreSQL" : "MemoryStore"}`);
 console.log("=== END DEBUG ===");
 
-// Health check endpoints
-app.get("/api/health", (req, res) => {
+// Health check
+app.get("/api/health", (_req, res) => {
   res.json({ status: "healthy", server: "Student Complaint System" });
 });
 
-app.get("/api/health/db", async (req, res) => {
+app.get("/api/health/db", async (_req, res) => {
   try {
-    await db.execute('SELECT 1');
+    await db.execute("SELECT 1");
     res.json({ status: "healthy", database: "connected" });
   } catch (error) {
     console.error("Database health check failed:", error);
@@ -293,151 +254,76 @@ app.get("/api/health/db", async (req, res) => {
   }
 });
 
-// Test endpoint
-app.get("/api/test", (req, res) => {
+app.get("/api/test", (_req, res) => {
   res.json({ message: "Backend test OK", timestamp: new Date().toISOString() });
 });
 
-// SECURED: Setup endpoint disabled for production
-app.post("/api/setup/create-admin", (req: Request, res: Response) => {
+// Setup endpoint locked in production
+app.post("/api/setup/create-admin", (_req: Request, res: Response) => {
   res.status(403).json({
     success: false,
     message: "Setup endpoint disabled for security in production.",
-    note: "If you need to reset admin, run direct SQL or use signup endpoint."
   });
 });
 
-// DEVELOPMENT MOCK ENDPOINTS - Add these BEFORE real routes
+// Development mock endpoints
 if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS === "true") {
   console.log("⚠️ Development mode: Mock endpoints enabled");
 
-  // Development-only setup endpoint
   app.post("/api/setup/create-admin", async (req, res) => {
     try {
-      console.log("🔧 Development setup endpoint called");
-
       const existingUsers = await db.select().from(users).where(eq(users.username, "admin"));
-
       if (existingUsers.length > 0) {
-        return res.json({
-          success: false,
-          message: "Admin user already exists",
-          username: "admin"
-        });
+        return res.json({ success: false, message: "Admin user already exists" });
       }
-
       const hashedPassword = await hashPassword("admin123");
-      const [admin] = await db.insert(users).values({
+      await db.insert(users).values({
         username: "admin",
         email: "admin@example.com",
         password: hashedPassword,
-        role: "admin"
+        role: "admin",
       }).returning();
-
-      console.log("✅ Admin user created (development)");
-      res.json({
-        success: true,
-        message: "Admin user created successfully",
-        user: {
-          username: "admin",
-          password: "admin123",
-          role: "admin",
-          note: "Change password immediately"
-        }
-      });
+      res.json({ success: true, message: "Admin user created", password: "admin123" });
     } catch (error) {
-      console.error("❌ Setup error:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to create admin user",
-        details: error instanceof Error ? error.message : String(error)
-      });
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : String(error) });
     }
   });
 
-  // Mock leaderboard endpoint
-  app.get("/api/leaderboard", (req, res) => {
-    console.log("📊 Mock leaderboard endpoint called");
-    res.json([
-      { id: "1", name: "Test User 1", score: 100, complaints: 5 },
-      { id: "2", name: "Test User 2", score: 85, complaints: 4 },
-      { id: "3", name: "Test User 3", score: 70, complaints: 3 }
-    ]);
-  });
+  app.get("/api/leaderboard", (_req, res) => res.json([]));
+  app.get("/api/complaints", (_req, res) => res.json([]));
 
-  // Mock login endpoint
   app.post("/api/auth/login", (req, res) => {
-    console.log("🔐 Mock login endpoint called");
-    // Set session
     (req as any).session.userId = "dev-user-123";
-    res.json({
-      user: {
-        id: "dev-user-123",
-        email: "dev@example.com",
-        name: "Development User",
-        role: "student"
-      },
-      message: "Login successful (development mode)"
-    });
+    res.json({ user: { id: "dev-user-123", email: "dev@example.com", username: "devuser", role: "student" } });
   });
 
-  // Mock signup endpoint
   app.post("/api/auth/signup", (req, res) => {
-    console.log("📝 Mock signup endpoint called");
-    // Set session
     (req as any).session.userId = "dev-user-123";
-    res.json({
-      user: {
-        id: "dev-user-123",
-        email: req.body?.email || "dev@example.com",
-        name: req.body?.name || "Development User",
-        role: "student"
-      },
-      message: "Signup successful (development mode)"
-    });
-  });
-
-  // Mock complaints endpoint
-  app.get("/api/complaints", (req, res) => {
-    console.log("📝 Mock complaints endpoint called");
-    res.json([]);
+    res.json({ user: { id: "dev-user-123", email: req.body?.email || "dev@example.com", username: req.body?.username || "devuser", role: "student" } });
   });
 }
 
 const httpServer = createServer(app);
 
-// Register API routes - pass both httpServer and app
 registerRoutes(httpServer, app);
 
-// Serve static files in production
-if (process.env.NODE_ENV === "production") {
-  // serveStatic(app); // Disabled for production
-}
-
-// Global error handling middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('🚨 Unhandled Error:', {
+// Global error handler
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  console.error("🚨 Unhandled Error:", {
     message: err.message,
-    stack: err.stack,
     url: req.url,
     method: req.method,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
-
   res.status(500).json({
     success: false,
-    error: process.env.NODE_ENV === 'production' ? "Something went wrong!" : err.message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    error: process.env.NODE_ENV === "production" ? "Something went wrong!" : err.message,
   });
 });
 
 // 404 handler
 app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found',
-    path: req.url
-  });
+  res.status(404).json({ success: false, error: "Route not found", path: req.url });
 });
 
 const PORT = process.env.PORT || 3001;
@@ -447,6 +333,4 @@ httpServer.listen(PORT, () => {
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
   console.log(`🍪 Cookie secure: ${sessionConfig.cookie?.secure}`);
   console.log(`🍪 Cookie sameSite: ${sessionConfig.cookie?.sameSite}`);
-  console.log(`🔒 Setup endpoint: ${process.env.NODE_ENV === 'production' ? 'DISABLED for security' : 'ENABLED for development'}`);
-  console.log(`🔍 JSON validation: ${process.env.NODE_ENV === 'production' ? 'ENABLED' : 'ENABLED with verbose logging'}`);
 });

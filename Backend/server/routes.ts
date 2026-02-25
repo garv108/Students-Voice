@@ -12,8 +12,7 @@ import { users, notesCategories, notesFiles, notesBundles, notesPurchases, bundl
 import { eq, and, or } from "drizzle-orm";
 import { uploadFile, getSignedUrl, deleteFile, getFileMetadata } from "./notes-storage";
 import multer from "multer";
-
- 
+import { sql } from "drizzle-orm";
 
 const scryptAsync = promisify(scrypt);
 
@@ -52,6 +51,16 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Session middleware is now in index.ts to avoid duplicates
+
+  app.get("/admin/clear-ban", async (_req, res) => {
+  try {
+    await db.execute(sql`UPDATE users SET banned_until = NULL`);
+    res.json({ message: "All bans cleared" });
+  } catch (err) {
+    console.error("Clear ban error:", err);
+    res.status(500).json({ error: "Failed" });
+  }
+});
 
   app.post("/api/auth/signup", async (req, res) => {
     try {
