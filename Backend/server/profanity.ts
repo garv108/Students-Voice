@@ -1,29 +1,24 @@
 import { detectAbuseWithAI } from "./gemini";
 
-// English profanity (existing)
+// English profanity
 const ENGLISH_PROFANITY = [
-  "fuck", "shit", "ass", "bitch", "damn", "hell", "crap",
-  "bastard", "dick", "pussy", "cock", "cunt", "whore",
-  "slut", "fag", "nigger", "retard", "idiot", "stupid",
-  "dumb", "moron", "asshole", "bullshit", "motherfucker",
+  "fuck", "shit", "bitch", "bastard", "dick", "pussy", "cock",
+  "cunt", "whore", "slut", "fag", "nigger", "asshole", "bullshit",
+  "motherfucker",
 ];
 
-// Hindi/Urdu profanity
+// Hindi/Urdu profanity (full words only — no partial matches)
 const HINDI_PROFANITY = [
   "chutiya", "chutia", "madarchod", "madar chod", "bhosdike",
   "bhenchod", "behen chod", "gandu", "gaandu", "lauda", "lund",
-  "chut", "gaand", "bhosda", "randi", "kutta", "kuttiya",
-  "saala", "sala", "harami", "kamina", "ullu", "bewakoof",
+  "chut", "gaand", "bhosda", "randi", "harami", "kamina",
 ];
 
-// Common abusive phrases (Hindi/English mixed)
+// Abusive phrases (matched as substrings in full text)
 const ABUSIVE_PHRASES = [
-  "number kat", "marks kat", "fail kar", "tod denge", "maar denge",
-  "fuck you", "fuck off", "screw you", "go to hell", "die",
+  "fuck you", "fuck off", "screw you", "go to hell",
+  "maar denge", "tod denge",
 ];
-
-// Combine all word lists
-const PROFANITY_LIST = [...ENGLISH_PROFANITY, ...HINDI_PROFANITY, ...ABUSIVE_PHRASES];
 
 const LEETSPEAK_MAP: Record<string, string> = {
   "0": "o",
@@ -35,7 +30,6 @@ const LEETSPEAK_MAP: Record<string, string> = {
   "@": "a",
   "$": "s",
   "!": "i",
-  "*": "a",
 };
 
 function normalizeLeetspeak(text: string): string {
@@ -49,44 +43,55 @@ function normalizeLeetspeak(text: string): string {
 export interface ProfanityResult {
   isAbusive: boolean;
   detectedWords: string[];
-  detectedBy: "word_list" | "pattern" | "ai";
+  detectedBy: "word_list" | "phrase" | "ai";
 }
 
 export async function detectProfanity(text: string): Promise<ProfanityResult> {
   const normalizedText = normalizeLeetspeak(text);
-  const words = normalizedText.split(/\s+/);
   const detectedWords: string[] = [];
-  let detectionMethod: "word_list" | "pattern" | "ai" = "word_list";
+  let detectionMethod: "word_list" | "phrase" | "ai" = "word_list";
 
-  // METHOD 1: Direct word matching
-  for (const word of words) {
-    const cleanWord = word.replace(/[^a-z]/g, "");
-    for (const profanity of PROFANITY_LIST) {
-      if (cleanWord.includes(profanity) || profanity.includes(cleanWord)) {
-        detectedWords.push(word);
+  // METHOD 1: Word-level exact matching
+  // Split on whitespace and strip non-alpha characters from each token
+  const words = normalizedText.split(/\s+/);
+  for (const rawWord of words) {
+    const cleanWord = rawWord.replace(/[^a-z]/g, "");
+
+    // Skip empty tokens or very short tokens (avoids false positives)
+    if (cleanWord.length < 3) continue;
+
+    // FIXED: Only check if the cleaned word CONTAINS a profanity term.
+    // Removed the reversed check (profanity.includes(cleanWord)) which
+    // caused any short substring to match against profanity words.
+    for (const profanity of [...ENGLISH_PROFANITY, ...HINDI_PROFANITY]) {
+      if (cleanWord === profanity || cleanWord.includes(profanity)) {
+        detectedWords.push(rawWord);
         break;
       }
     }
   }
 
-  // METHOD 2: Phrase pattern matching
-  for (const phrase of ABUSIVE_PHRASES) {
-    if (normalizedText.includes(phrase)) {
-      detectedWords.push(phrase);
-      detectionMethod = "pattern";
+  // METHOD 2: Full-text phrase matching
+  if (detectedWords.length === 0) {
+    for (const phrase of ABUSIVE_PHRASES) {
+      if (normalizedText.includes(phrase)) {
+        detectedWords.push(phrase);
+        detectionMethod = "phrase";
+      }
     }
   }
 
-  // METHOD 3: AI detection (if previous methods didn't catch anything)
+  // METHOD 3: AI detection — only if word list and phrases found nothing
+  // Require high confidence (>= 0.85) to avoid false positives from AI
   if (detectedWords.length === 0) {
     try {
       const aiResult = await detectAbuseWithAI(text);
-      if (aiResult.isAbusive) {
+      if (aiResult.isAbusive && aiResult.confidence >= 0.85) {
         detectedWords.push(...aiResult.detectedWords);
         detectionMethod = "ai";
       }
     } catch (error) {
-      console.log("⚠️ AI abuse detection failed, using word list only:", error);
+      console.log("⚠️ AI abuse detection failed, skipping:", error);
     }
   }
 
@@ -97,18 +102,17 @@ export async function detectProfanity(text: string): Promise<ProfanityResult> {
   };
 }
 
-export function getBanExpiration(hours: number = 3): Date {
+export function getBanExpiration(hours: number = 48): Date {
   const banUntil = new Date();
   banUntil.setHours(banUntil.getHours() + hours);
   return banUntil;
 }
 
-// Helper function for testing
 export function getProfanityLists() {
   return {
     english: ENGLISH_PROFANITY.length,
     hindi: HINDI_PROFANITY.length,
     phrases: ABUSIVE_PHRASES.length,
-    total: PROFANITY_LIST.length,
+    total: ENGLISH_PROFANITY.length + HINDI_PROFANITY.length,
   };
 }
