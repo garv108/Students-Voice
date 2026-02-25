@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
   role: string;
@@ -10,6 +10,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  isBackendReady: boolean;
   login: (username: string, password: string) => Promise<void>;
   signup: (username: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -22,21 +23,41 @@ const API_BASE = import.meta.env.VITE_API_URL || "";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBackendReady, setIsBackendReady] = useState(false);
 
-  // Fetch current session user
+  // Wake up Render backend immediately on app load.
+  // Free tier spins down after inactivity — this ping starts the boot
+  // so by the time the user fills in the form, the backend is ready.
+  useEffect(() => {
+    const wakeBackend = async () => {
+      try {
+        await fetch(`${API_BASE}/api/health`, {
+          method: "GET",
+          // Short timeout — we just want to trigger the wake, not block on it
+          signal: AbortSignal.timeout(90000), // 90s max for cold start
+        });
+        setIsBackendReady(true);
+      } catch {
+        // Even if health check fails, don't block the UI
+        setIsBackendReady(true);
+      }
+    };
+
+    wakeBackend();
+  }, []);
+
   const fetchUser = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/me`, {
         credentials: "include",
       });
-
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
       } else {
         setUser(null);
       }
-    } catch (err) {
+    } catch {
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -54,13 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       credentials: "include",
       body: JSON.stringify({ username, password }),
     });
-
     const data = await res.json();
-
     if (!res.ok) {
       throw new Error(data.message || "Login failed");
     }
-
     setUser(data.user);
   };
 
@@ -71,13 +89,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       credentials: "include",
       body: JSON.stringify({ username, email, password }),
     });
-
     const data = await res.json();
-
     if (!res.ok) {
       throw new Error(data.message || "Signup failed");
     }
-
     setUser(data.user);
   };
 
@@ -86,12 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       credentials: "include",
     });
-
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isBackendReady, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
