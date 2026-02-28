@@ -75,9 +75,14 @@ export default function Home() {
     solved: 0,
   };
 
-  const totalReports = data?.complaints?.reduce((sum, complaint) => 
-    sum + complaint.similarComplaintsCount + 1, 0
-  ) || 0;
+  // BUG FIX: similarComplaintsCount already counts duplicates on backend.
+  // Adding +1 was double-counting the original complaint itself.
+  // Now: totalReports = number of unique issues (stats.total) + all similar/duplicate reports
+  const totalReports =
+    (data?.complaints?.reduce(
+      (sum, complaint) => sum + (complaint.similarComplaintsCount || 0),
+      0
+    ) || 0) + (stats.total || 0);
 
   const urgencyLevels = ["normal", "urgent", "critical", "top_priority", "emergency"] as const;
 
