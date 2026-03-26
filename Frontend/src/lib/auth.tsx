@@ -8,6 +8,7 @@ interface User {
 }
 
 interface SignupData {
+
   username: string;
   email: string;
   password: string;
@@ -16,7 +17,10 @@ interface SignupData {
   phone?: string;
   rollNumber?: string;
   semester?: number;
+
   college?: string;
+  collegeId?: string;
+
   role?: string;
 }
 
