@@ -5,19 +5,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerRoutes = registerRoutes;
 const storage_1 = require("./storage");
-const profanity_1 = require("./profanity");
-const gemini_1 = require("./gemini");
-const schema_1 = require("../shared/schema");
-const zod_1 = require("zod");
 const crypto_1 = require("crypto");
 const util_1 = require("util");
 const db_1 = require("./db");
-const schema_2 = require("../shared/schema");
+const schema_1 = require("../shared/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const notes_storage_1 = require("./notes-storage");
 const multer_1 = __importDefault(require("multer"));
 const drizzle_orm_2 = require("drizzle-orm");
 const auth_1 = require("./routes/auth");
+const colleges_1 = require("./routes/colleges");
+const complaints_1 = require("./routes/complaints");
+const admin_1 = require("./routes/admin");
 const scryptAsync = (0, util_1.promisify)(crypto_1.scrypt);
 async function hashPassword(password) {
     const salt = (0, crypto_1.randomBytes)(16).toString("hex");
@@ -47,6 +46,9 @@ async function requireAdmin(req, res, next) {
 }
 async function registerRoutes(httpServer, app) {
     (0, auth_1.registerAuthRoutes)(app);
+    (0, colleges_1.registerCollegeRoutes)(app);
+    (0, complaints_1.registerComplaintRoutes)(app);
+    (0, admin_1.registerAdminRoutes)(app);
     app.get("/admin/clear-ban", async (_req, res) => {
         try {
             await db_1.db.execute((0, drizzle_orm_2.sql) `UPDATE users SET banned_until = NULL`);
@@ -57,328 +59,14 @@ async function registerRoutes(httpServer, app) {
             res.status(500).json({ error: "Failed" });
         }
     });
-    /* ================= AUTH ================= */
-    /* ================= COLLEGES ================= */
-    app.get("/api/colleges", async (_req, res) => {
-        try {
-            const result = await db_1.db.execute((0, drizzle_orm_2.sql) `SELECT id, name FROM colleges ORDER BY name`);
-            res.json(result.rows);
-        }
-        catch (error) {
-            console.error("Get colleges error:", error);
-            res.status(500).json({
-                message: "Failed to load colleges"
-            });
-        }
-    });
+    /* ================= AUTH =====transfered to routes============ */
+    /* ================= COLLEGES =====transfered to routes============ */
     /* ================= COMPLAINTS ================= */
-    app.post("/api/complaints", requireAuth, async (req, res) => {
-        try {
-            const user = await storage_1.storage.getUser(req.session.userId);
-            if (!user) {
-                return res.status(401).json({ message: "User not found" });
-            }
-            if (user.bannedUntil && new Date(user.bannedUntil) > new Date()) {
-                return res.status(403).json({
-                    message: "Your account is temporarily banned",
-                    bannedUntil: user.bannedUntil,
-                });
-            }
-            const data = schema_1.insertComplaintSchema.parse(req.body);
-            const profanityCheck = await (0, profanity_1.detectProfanity)(data.originalText);
-            if (profanityCheck.isAbusive) {
-                const banUntil = (0, profanity_1.getBanExpiration)(3);
-                await storage_1.storage.updateUserBan(user.id, banUntil);
-                await storage_1.storage.createAbuseLog({
-                    userId: user.id,
-                    username: user.username,
-                    flaggedText: data.originalText,
-                    detectedWords: profanityCheck.detectedWords,
-                });
-                return res.status(403).json({
-                    message: "Your submission contains inappropriate language. Your account has been suspended for 48 hours.",
-                    bannedUntil: banUntil,
-                });
-            }
-            const analysis = await (0, gemini_1.analyzeComplaint)(data.originalText);
-            const cluster = await storage_1.storage.getOrCreateCluster(analysis.keywords);
-            const complaint = await storage_1.storage.createComplaint({
-                userId: user.id,
-                collegeId: user.collegeId ?? null, // ✅ MULTI-TENANT
-                username: user.username,
-                originalText: data.originalText,
-                summary: analysis.summary,
-                severity: analysis.severity,
-                keywords: analysis.keywords,
-                status: "pending",
-                solved: false,
-                solvedBy: null,
-                solvedAt: null,
-                urgency: "normal",
-                similarComplaintsCount: cluster ? 1 : 0,
-                clusterId: cluster?.id || null,
-                likesCount: 0,
-                dislikesCount: 0,
-            });
-            if (cluster) {
-                await storage_1.storage.updateClusterCount(cluster.id);
-            }
-            res.json({ complaint });
-        }
-        catch (error) {
-            if (error instanceof zod_1.z.ZodError) {
-                return res.status(400).json({ message: error.errors[0].message });
-            }
-            console.error("Create complaint error:", error);
-            res.status(500).json({ message: "Failed to submit complaint" });
-        }
-    });
-    app.get("/api/leaderboard", async (req, res) => {
-        try {
-            const complaintsData = await storage_1.storage.getLeaderboardComplaints();
-            const stats = await storage_1.storage.getAdminStats();
-            const userId = req.session.userId;
-            const complaintsWithReactions = await Promise.all(complaintsData.map(async (complaint) => {
-                const reactionCounts = await storage_1.storage.getReactionCounts(complaint.id);
-                let userLiked = false;
-                let userDisliked = false;
-                let userReactions = [];
-                if (userId) {
-                    const like = await storage_1.storage.getUserLike(complaint.id, userId);
-                    if (like) {
-                        userLiked = like.isLike;
-                        userDisliked = !like.isLike;
-                    }
-                    userReactions = await storage_1.storage.getUserReactions(complaint.id, userId);
-                }
-                return {
-                    ...complaint,
-                    reactions: reactionCounts,
-                    userLiked,
-                    userDisliked,
-                    userReactions,
-                };
-            }));
-            res.json({
-                complaints: complaintsWithReactions,
-                stats: {
-                    total: stats.totalComplaints,
-                    urgent: stats.urgentCount,
-                    critical: stats.criticalCount,
-                    emergency: stats.emergencyCount,
-                    solved: stats.solvedComplaints,
-                },
-            });
-        }
-        catch (error) {
-            console.error("Leaderboard error:", error);
-            res.status(500).json({ message: "Failed to load leaderboard" });
-        }
-    });
-    app.post("/api/complaints/:id/like", requireAuth, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const userId = req.session.userId;
-            await storage_1.storage.addLike(id, userId, true);
-            res.json({ success: true });
-        }
-        catch (error) {
-            console.error("Like error:", error);
-            res.status(500).json({ message: "Failed to like" });
-        }
-    });
-    app.post("/api/complaints/:id/dislike", requireAuth, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const userId = req.session.userId;
-            await storage_1.storage.addLike(id, userId, false);
-            res.json({ success: true });
-        }
-        catch (error) {
-            console.error("Dislike error:", error);
-            res.status(500).json({ message: "Failed to dislike" });
-        }
-    });
-    app.post("/api/complaints/:id/react", requireAuth, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { emoji } = req.body;
-            const userId = req.session.userId;
-            if (!emoji || typeof emoji !== "string") {
-                return res.status(400).json({ message: "Emoji required" });
-            }
-            await storage_1.storage.addReaction(id, userId, emoji);
-            res.json({ success: true });
-        }
-        catch (error) {
-            console.error("React error:", error);
-            res.status(500).json({ message: "Failed to react" });
-        }
-    });
-    app.put("/api/complaints/:id/solve", requireAdmin, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const userId = req.session.userId;
-            const existing = await storage_1.storage.getComplaint(id);
-            if (!existing) {
-                return res.status(404).json({ message: "Complaint not found" });
-            }
-            const complaint = await storage_1.storage.updateComplaint(id, {
-                solved: true,
-                solvedBy: userId,
-                solvedAt: new Date(),
-                status: "solved",
-                urgency: "normal",
-                similarComplaintsCount: 0,
-            });
-            if (existing.clusterId) {
-                await storage_1.storage.updateClusterCount(existing.clusterId);
-            }
-            res.json({ complaint });
-        }
-        catch (error) {
-            console.error("Solve error:", error);
-            res.status(500).json({ message: "Failed to mark as solved" });
-        }
-    });
-    app.delete("/api/complaints/:id", requireAuth, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const userId = req.session.userId;
-            const complaint = await storage_1.storage.getComplaint(id);
-            if (!complaint) {
-                return res.status(404).json({ message: "Complaint not found" });
-            }
-            const user = await storage_1.storage.getUser(userId);
-            if (!user) {
-                return res.status(401).json({ message: "User not found" });
-            }
-            const isOwner = complaint.userId === userId;
-            const isAdmin = user.role === "admin" || user.role === "moderator";
-            if (!isOwner && !isAdmin) {
-                return res.status(403).json({ message: "Not authorized to delete this complaint" });
-            }
-            await storage_1.storage.deleteComplaint(id);
-            res.json({ success: true });
-        }
-        catch (error) {
-            console.error("Delete error:", error);
-            res.status(500).json({ message: "Failed to delete complaint" });
-        }
-    });
     /* ================= ADMIN ================= */
-    app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
-        try {
-            const stats = await storage_1.storage.getAdminStats();
-            const complaints = await storage_1.storage.getComplaints();
-            const users = await storage_1.storage.getAllUsers();
-            const abuseLogs = await storage_1.storage.getAbuseLogs();
-            res.json({
-                stats,
-                complaints,
-                users: users.map((u) => ({ ...u, password: undefined })),
-                abuseLogs,
-            });
-        }
-        catch (error) {
-            console.error("Admin dashboard error:", error);
-            res.status(500).json({ message: "Failed to load dashboard" });
-        }
-    });
-    app.put("/api/admin/complaints/:id", requireAdmin, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { originalText, status } = req.body;
-            const existing = await storage_1.storage.getComplaint(id);
-            if (!existing) {
-                return res.status(404).json({ message: "Complaint not found" });
-            }
-            const updates = {};
-            if (originalText !== undefined)
-                updates.originalText = originalText;
-            if (status !== undefined) {
-                updates.status = status;
-                if (status === "solved") {
-                    updates.solved = true;
-                    updates.solvedBy = req.session.userId;
-                    updates.solvedAt = new Date();
-                    updates.urgency = "normal";
-                    updates.similarComplaintsCount = 0;
-                }
-                else if (status === "pending" || status === "in_progress") {
-                    updates.solved = false;
-                    updates.solvedBy = null;
-                    updates.solvedAt = null;
-                }
-            }
-            const complaint = await storage_1.storage.updateComplaint(id, updates);
-            if (existing.clusterId && status && existing.status !== status) {
-                await storage_1.storage.updateClusterCount(existing.clusterId);
-            }
-            res.json({ complaint });
-        }
-        catch (error) {
-            console.error("Admin edit error:", error);
-            res.status(500).json({ message: "Failed to update complaint" });
-        }
-    });
-    app.delete("/api/admin/complaints/bulk", requireAdmin, async (req, res) => {
-        try {
-            const { ids } = req.body;
-            if (!Array.isArray(ids)) {
-                return res.status(400).json({ message: "IDs array required" });
-            }
-            await storage_1.storage.deleteComplaintsBulk(ids);
-            res.json({ success: true, deleted: ids.length });
-        }
-        catch (error) {
-            console.error("Bulk delete error:", error);
-            res.status(500).json({ message: "Failed to delete complaints" });
-        }
-    });
-    app.put("/api/admin/users/:id/role", requireAdmin, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { role } = req.body;
-            if (!["student", "moderator", "admin"].includes(role)) {
-                return res.status(400).json({ message: "Invalid role" });
-            }
-            await storage_1.storage.updateUserRole(id, role);
-            res.json({ success: true });
-        }
-        catch (error) {
-            console.error("Update role error:", error);
-            res.status(500).json({ message: "Failed to update role" });
-        }
-    });
-    app.put("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { hours } = req.body;
-            const banUntil = (0, profanity_1.getBanExpiration)(hours || 3);
-            await storage_1.storage.updateUserBan(id, banUntil);
-            res.json({ success: true, bannedUntil: banUntil });
-        }
-        catch (error) {
-            console.error("Ban user error:", error);
-            res.status(500).json({ message: "Failed to ban user" });
-        }
-    });
-    app.put("/api/admin/users/:id/unban", requireAdmin, async (req, res) => {
-        try {
-            const { id } = req.params;
-            await storage_1.storage.updateUserBan(id, null);
-            res.json({ success: true });
-        }
-        catch (error) {
-            console.error("Unban user error:", error);
-            res.status(500).json({ message: "Failed to unban user" });
-        }
-    });
     /* ================= EDUNOTES ================= */
     app.get("/api/notes/categories", async (req, res) => {
         try {
-            const categories = await db_1.db.select().from(schema_2.notesCategories);
+            const categories = await db_1.db.select().from(schema_1.notesCategories);
             res.json(categories);
         }
         catch (error) {
@@ -389,7 +77,7 @@ async function registerRoutes(httpServer, app) {
     app.get("/api/notes/files/:categoryId", async (req, res) => {
         try {
             const { categoryId } = req.params;
-            const files = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.categoryId, categoryId));
+            const files = await db_1.db.select().from(schema_1.notesFiles).where((0, drizzle_orm_1.eq)(schema_1.notesFiles.categoryId, categoryId));
             res.json(files);
         }
         catch (error) {
@@ -399,7 +87,7 @@ async function registerRoutes(httpServer, app) {
     });
     app.get("/api/notes/bundles", async (req, res) => {
         try {
-            const bundles = await db_1.db.select().from(schema_2.notesBundles);
+            const bundles = await db_1.db.select().from(schema_1.notesBundles);
             res.json(bundles);
         }
         catch (error) {
@@ -411,17 +99,17 @@ async function registerRoutes(httpServer, app) {
         try {
             const { fileId, paymentProof } = req.body;
             const userId = req.session.userId;
-            const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, fileId)).limit(1);
+            const file = await db_1.db.select().from(schema_1.notesFiles).where((0, drizzle_orm_1.eq)(schema_1.notesFiles.id, fileId)).limit(1);
             if (!file.length) {
                 return res.status(404).json({ message: "File not found" });
             }
-            const existingPurchase = await db_1.db.select().from(schema_2.notesPurchases)
-                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.fileId, fileId)))
+            const existingPurchase = await db_1.db.select().from(schema_1.notesPurchases)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_1.notesPurchases.fileId, fileId)))
                 .limit(1);
             if (existingPurchase.length) {
                 return res.status(400).json({ message: "Already purchased" });
             }
-            const purchase = await db_1.db.insert(schema_2.notesPurchases).values({
+            const purchase = await db_1.db.insert(schema_1.notesPurchases).values({
                 buyerId: userId,
                 fileId,
                 paymentProof,
@@ -437,7 +125,7 @@ async function registerRoutes(httpServer, app) {
     app.get("/api/notes/my-purchases", requireAuth, async (req, res) => {
         try {
             const userId = req.session.userId;
-            const purchases = await db_1.db.select().from(schema_2.notesPurchases).where((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId));
+            const purchases = await db_1.db.select().from(schema_1.notesPurchases).where((0, drizzle_orm_1.eq)(schema_1.notesPurchases.buyerId, userId));
             res.json(purchases);
         }
         catch (error) {
@@ -449,13 +137,13 @@ async function registerRoutes(httpServer, app) {
         try {
             const { fileId } = req.params;
             const userId = req.session.userId;
-            const purchase = await db_1.db.select().from(schema_2.notesPurchases)
-                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.fileId, fileId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.paymentStatus, "verified")))
+            const purchase = await db_1.db.select().from(schema_1.notesPurchases)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_1.notesPurchases.fileId, fileId), (0, drizzle_orm_1.eq)(schema_1.notesPurchases.paymentStatus, "verified")))
                 .limit(1);
             if (!purchase.length) {
                 return res.status(403).json({ message: "Purchase not verified" });
             }
-            const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, fileId)).limit(1);
+            const file = await db_1.db.select().from(schema_1.notesFiles).where((0, drizzle_orm_1.eq)(schema_1.notesFiles.id, fileId)).limit(1);
             if (!file.length) {
                 return res.status(404).json({ message: "File not found" });
             }
@@ -476,7 +164,7 @@ async function registerRoutes(httpServer, app) {
                 return res.status(400).json({ message: "No file uploaded" });
             }
             const uploadResult = await (0, notes_storage_1.uploadFile)(file.buffer, file.originalname, categoryId);
-            const fileRecord = await db_1.db.insert(schema_2.notesFiles).values({
+            const fileRecord = await db_1.db.insert(schema_1.notesFiles).values({
                 categoryId,
                 title,
                 description,
@@ -494,7 +182,7 @@ async function registerRoutes(httpServer, app) {
     app.post("/api/admin/notes/category", requireAdmin, async (req, res) => {
         try {
             const { name, branch, semester, subject } = req.body;
-            const category = await db_1.db.insert(schema_2.notesCategories).values({
+            const category = await db_1.db.insert(schema_1.notesCategories).values({
                 name,
                 branch,
                 semester,
@@ -511,9 +199,9 @@ async function registerRoutes(httpServer, app) {
         try {
             const { id } = req.params;
             const { verified } = req.body;
-            await db_1.db.update(schema_2.notesPurchases)
+            await db_1.db.update(schema_1.notesPurchases)
                 .set({ paymentStatus: verified === true ? "verified" : "pending" })
-                .where((0, drizzle_orm_1.eq)(schema_2.notesPurchases.id, id));
+                .where((0, drizzle_orm_1.eq)(schema_1.notesPurchases.id, id));
             res.json({ success: true });
         }
         catch (error) {
@@ -524,12 +212,12 @@ async function registerRoutes(httpServer, app) {
     app.delete("/api/admin/notes/file/:id", requireAdmin, async (req, res) => {
         try {
             const { id } = req.params;
-            const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, id)).limit(1);
+            const file = await db_1.db.select().from(schema_1.notesFiles).where((0, drizzle_orm_1.eq)(schema_1.notesFiles.id, id)).limit(1);
             if (!file.length) {
                 return res.status(404).json({ message: "File not found" });
             }
             await (0, notes_storage_1.deleteFile)(file[0].filePath);
-            await db_1.db.delete(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, id));
+            await db_1.db.delete(schema_1.notesFiles).where((0, drizzle_orm_1.eq)(schema_1.notesFiles.id, id));
             res.json({ success: true });
         }
         catch (error) {
