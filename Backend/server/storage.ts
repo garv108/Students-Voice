@@ -150,6 +150,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(complaints.similarComplaintsCount), desc(complaints.likesCount), desc(complaints.createdAt));
   }
 
+  async getLeaderboardComplaintsByCollege(collegeId: string) {
+    return db
+      .select()
+      .from(complaints)
+      .where(eq(complaints.collegeId, collegeId))
+      .orderBy(desc(complaints.likesCount));
+  }
+
   async updateComplaint(id: string, updates: Partial<Complaint>): Promise<Complaint | undefined> {
     const [updated] = await db
       .update(complaints)
@@ -396,5 +404,3 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
-
-
