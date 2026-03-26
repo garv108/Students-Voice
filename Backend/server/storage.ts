@@ -1,4 +1,4 @@
-﻿import {
+﻿﻿import {
   users,
   complaints,
   reactions,
@@ -49,7 +49,7 @@ export interface IStorage {
   createComplaint(complaint: Omit<Complaint, "id" | "createdAt">): Promise<Complaint>;
   getComplaint(id: string): Promise<Complaint | undefined>;
   getComplaints(): Promise<Complaint[]>;
-  getLeaderboardComplaints(): Promise<Complaint[]>;
+  getLeaderboardComplaints(collegeId?: string): Promise<Complaint[]>;
   updateComplaint(id: string, updates: Partial<Complaint>): Promise<Complaint | undefined>;
   deleteComplaint(id: string): Promise<void>;
   deleteComplaintsBulk(ids: string[]): Promise<void>;
@@ -70,7 +70,7 @@ export interface IStorage {
   updateClusterCount(clusterId: string): Promise<void>;
   recalculateUrgencies(): Promise<void>;
   
-  getAdminStats(): Promise<{
+  getAdminStats(collegeId?: string): Promise<{
     totalComplaints: number;
     pendingComplaints: number;
     solvedComplaints: number;
@@ -143,11 +143,19 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(complaints).orderBy(desc(complaints.createdAt));
   }
 
-  async getLeaderboardComplaints(): Promise<Complaint[]> {
+  async getLeaderboardComplaints(collegeId?: string): Promise<Complaint[]> {
+    if (collegeId) {
+      return db
+        .select()
+        .from(complaints)
+        .where(eq(complaints.collegeId, collegeId))
+        .orderBy(desc(complaints.likesCount));
+    }
+
     return db
       .select()
       .from(complaints)
-      .orderBy(desc(complaints.similarComplaintsCount), desc(complaints.likesCount), desc(complaints.createdAt));
+      .orderBy(desc(complaints.likesCount));
   }
 
   async getLeaderboardComplaintsByCollege(collegeId: string) {
@@ -372,7 +380,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getAdminStats(): Promise<{
+  async getAdminStats(collegeId?: string): Promise<{
     totalComplaints: number;
     pendingComplaints: number;
     solvedComplaints: number;
@@ -383,10 +391,31 @@ export class DatabaseStorage implements IStorage {
     bannedUsers: number;
     abuseLogs: number;
   }> {
+    if (collegeId) {
+      const complaintsFiltered = await db
+        .select()
+        .from(complaints)
+        .where(eq(complaints.collegeId, collegeId));
+      const allUsers = await db.select().from(users);
+      const allAbuseLogs = await db.select().from(abuseLogs);
+      const now = new Date();
+
+      return {
+        totalComplaints: complaintsFiltered.length,
+        pendingComplaints: complaintsFiltered.filter((c: any) => c.status === "pending").length,
+        solvedComplaints: complaintsFiltered.filter((c: any) => c.solved).length,
+        urgentCount: complaintsFiltered.filter((c: any) => c.urgency === "urgent").length,
+        criticalCount: complaintsFiltered.filter((c: any) => c.urgency === "critical" || c.urgency === "top_priority").length,
+        emergencyCount: complaintsFiltered.filter((c: any) => c.urgency === "emergency").length,
+        totalUsers: allUsers.length,
+        bannedUsers: allUsers.filter((u: any) => u.bannedUntil && new Date(u.bannedUntil) > now).length,
+        abuseLogs: allAbuseLogs.length,
+      };
+    }
+
     const allComplaints = await db.select().from(complaints);
     const allUsers = await db.select().from(users);
     const allAbuseLogs = await db.select().from(abuseLogs);
-
     const now = new Date();
 
     return {
