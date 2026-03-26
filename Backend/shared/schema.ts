@@ -23,6 +23,13 @@ export const userSessionsRelations = relations(userSessions, ({ one }) => ({
   }),
 }));
 
+export const colleges = pgTable("colleges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  code: text("code"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
 
@@ -39,6 +46,8 @@ export const users = pgTable("users", {
   semester: integer("semester"),
 
   college: text("college"),
+
+  collegeId: varchar("college_id"),
 
   userType: text("user_type"),
 
@@ -61,6 +70,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 export const complaints = pgTable("complaints", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  collegeId: varchar("college_id"),
   username: text("username").notNull(),
   originalText: text("original_text").notNull(),
   summary: text("summary"),
@@ -276,6 +286,7 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
 // Validation schemas (UPDATED)
 
 export const insertUserSchema = z.object({
+
   username: z.string().min(1, "Username is required"),
 
   name: z.string().optional(),
@@ -290,9 +301,15 @@ export const insertUserSchema = z.object({
 
   college: z.string().optional(),
 
+  collegeId: z.string().optional(),   // ✅ FIX
+
   userType: z.string().optional(),
 
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().min(
+    6,
+    "Password must be at least 6 characters"
+  ),
+
 });
 
 export const loginSchema = z.object({
@@ -319,6 +336,7 @@ export const insertReactionSchema = z.object({
 
 // Type exports
 export type UserSession = typeof userSessions.$inferSelect;
+export type College = typeof colleges.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Complaint = typeof complaints.$inferSelect;

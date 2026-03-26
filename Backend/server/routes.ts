@@ -50,7 +50,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Session middleware is now in index.ts to avoid duplicates
 
   app.get("/admin/clear-ban", async (_req, res) => {
     try {
@@ -62,7 +61,25 @@ export async function registerRoutes(
     }
   });
 
-  // ====================== UPDATED SIGNUP ROUTE ======================
+
+  /* ================= AUTH ================= */
+
+  /* ================= COLLEGES ================= */
+
+  app.get("/api/colleges", async (_req, res) => {
+    try {
+      const result = await db.execute(
+        sql`SELECT id, name FROM colleges ORDER BY name`
+      );
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Get colleges error:", error);
+      res.status(500).json({
+        message: "Failed to load colleges"
+      });
+    }
+  });
+
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const data = insertUserSchema.parse(req.body);
@@ -79,7 +96,17 @@ export async function registerRoutes(
 
       const hashedPassword = await hashPassword(data.password);
 
-      // Pass optional fields directly – they are already undefined if not provided
+      // ✅ find college from DB
+      let collegeId: string | null = null;
+      if (data.college) {
+        const result = await db.execute(
+          sql`SELECT id FROM colleges WHERE name = ${data.college} LIMIT 1`
+        );
+        if (result.rows.length > 0) {
+          collegeId = result.rows[0].id;
+        }
+      }
+
       const user = await storage.createUser({
         username: data.username,
         email: data.email,
@@ -89,17 +116,13 @@ export async function registerRoutes(
         rollNumber: data.rollNumber,
         semester: data.semester,
         college: data.college,
+        collegeId: collegeId ?? undefined,
         userType: data.userType,
       });
 
       (req as any).session.userId = user.id;
 
-      res.json({
-        user: {
-          ...user,
-          password: undefined,
-        },
-      });
+      res.json({ user: { ...user, password: undefined } });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -108,7 +131,6 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to create account" });
     }
   });
-  // ==================================================================
 
   app.post("/api/auth/login", async (req, res) => {
     try {
@@ -193,6 +215,9 @@ export async function registerRoutes(
     res.json({ user: { ...user, password: undefined } });
   });
 
+
+  /* ================= COMPLAINTS ================= */
+
   app.post("/api/complaints", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser((req as any).session.userId!);
@@ -233,6 +258,7 @@ export async function registerRoutes(
 
       const complaint = await storage.createComplaint({
         userId: user.id,
+        collegeId: user.collegeId ?? null, // ✅ MULTI-TENANT
         username: user.username,
         originalText: data.originalText,
         summary: analysis.summary,
@@ -315,7 +341,6 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const userId = (req as any).session.userId!;
-
       await storage.addLike(id, userId, true);
       res.json({ success: true });
     } catch (error) {
@@ -328,7 +353,6 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const userId = (req as any).session.userId!;
-
       await storage.addLike(id, userId, false);
       res.json({ success: true });
     } catch (error) {
@@ -415,6 +439,9 @@ export async function registerRoutes(
     }
   });
 
+
+  /* ================= ADMIN ================= */
+
   app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
     try {
       const stats = await storage.getAdminStats();
@@ -480,7 +507,6 @@ export async function registerRoutes(
       if (!Array.isArray(ids)) {
         return res.status(400).json({ message: "IDs array required" });
       }
-
       await storage.deleteComplaintsBulk(ids);
       res.json({ success: true, deleted: ids.length });
     } catch (error) {
@@ -531,9 +557,9 @@ export async function registerRoutes(
     }
   });
 
-  // EduNotes Routes
 
-  // Public routes
+  /* ================= EDUNOTES ================= */
+
   app.get("/api/notes/categories", async (req, res) => {
     try {
       const categories = await db.select().from(notesCategories);
@@ -565,7 +591,6 @@ export async function registerRoutes(
     }
   });
 
-  // Authenticated routes
   app.post("/api/notes/purchase", requireAuth, async (req, res) => {
     try {
       const { fileId, paymentProof } = req.body;
@@ -615,7 +640,11 @@ export async function registerRoutes(
       const userId = (req as any).session.userId!;
 
       const purchase = await db.select().from(notesPurchases)
-        .where(and(eq(notesPurchases.buyerId, userId), eq(notesPurchases.fileId, fileId), eq(notesPurchases.paymentStatus, "verified")))
+        .where(and(
+          eq(notesPurchases.buyerId, userId),
+          eq(notesPurchases.fileId, fileId),
+          eq(notesPurchases.paymentStatus, "verified")
+        ))
         .limit(1);
 
       if (!purchase.length) {
@@ -635,10 +664,9 @@ export async function registerRoutes(
     }
   });
 
-  // Admin routes
   const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
-  app.post("/api/admin/notes/upload", requireAdmin, upload.single('file'), async (req, res) => {
+  app.post("/api/admin/notes/upload", requireAdmin, upload.single("file"), async (req, res) => {
     try {
       const { categoryId, title, description, price } = req.body;
       const file = req.file;
@@ -709,7 +737,6 @@ export async function registerRoutes(
       }
 
       await deleteFile(file[0].filePath);
-
       await db.delete(notesFiles).where(eq(notesFiles.id, id));
 
       res.json({ success: true });
