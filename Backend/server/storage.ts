@@ -5,6 +5,7 @@
   likes,
   abuseLogs,
   clusterGroups,
+  collegeSettings,
   type User,
   type InsertUser,
   type Complaint,
@@ -429,6 +430,31 @@ export class DatabaseStorage implements IStorage {
       bannedUsers: allUsers.filter((u: any) => u.bannedUntil && new Date(u.bannedUntil) > now).length,
       abuseLogs: allAbuseLogs.length,
     };
+  }
+
+  async getCollegeSettings(collegeId: string) {
+    const result = await db
+      .select()
+      .from(collegeSettings)
+      .where(eq(collegeSettings.collegeId, collegeId));
+
+    return result[0] ?? null;
+  }
+
+  async setCollegeSettings(collegeId: string, data: any) {
+    const existing = await this.getCollegeSettings(collegeId);
+
+    if (existing) {
+      await db
+        .update(collegeSettings)
+        .set(data)
+        .where(eq(collegeSettings.collegeId, collegeId));
+    } else {
+      await db.insert(collegeSettings).values({
+        collegeId,
+        ...data,
+      });
+    }
   }
 }
 
