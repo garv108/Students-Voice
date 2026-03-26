@@ -30,35 +30,55 @@ export const colleges = pgTable("colleges", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-
-  username: text("username").notNull().unique(),
-
-  name: text("name"),
-
-  email: text("email").notNull().unique(),
-
-  phone: text("phone"),
-
-  rollNumber: text("roll_number"),
-
-  semester: integer("semester"),
-
-  college: text("college"),
-
-  collegeId: varchar("college_id"),
-
-  userType: text("user_type"),
-
-  password: text("password").notNull(),
-
-  role: roleEnum("role").notNull().default("student"),
-
-  bannedUntil: timestamp("banned_until"),
-
+// ✅ NEW: templates table
+export const templates = pgTable("templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  layout: json("layout"),
+  config: json("config"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// ✅ NEW: college_settings table
+export const collegeSettings = pgTable("college_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  collegeId: varchar("college_id").references(() => colleges.id, { onDelete: "cascade" }),
+  templateId: text("template_id").references(() => templates.id),
+  themeColor: text("theme_color"),
+  logoUrl: text("logo_url"),
+  features: json("features"),
+  customFields: json("custom_fields"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  name: text("name"),
+  email: text("email").notNull().unique(),
+  phone: text("phone"),
+  rollNumber: text("roll_number"),
+  semester: integer("semester"),
+  college: text("college"),
+  collegeId: varchar("college_id"),
+  userType: text("user_type"),
+  password: text("password").notNull(),
+  role: roleEnum("role").notNull().default("student"),
+  bannedUntil: timestamp("banned_until"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ✅ NEW: relations for collegeSettings and templates
+export const collegeSettingsRelations = relations(collegeSettings, ({ one }) => ({
+  college: one(colleges, {
+    fields: [collegeSettings.collegeId],
+    references: [colleges.id],
+  }),
+  template: one(templates, {
+    fields: [collegeSettings.templateId],
+    references: [templates.id],
+  }),
+}));
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   complaints: many(complaints),
@@ -286,30 +306,16 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
 // Validation schemas (UPDATED)
 
 export const insertUserSchema = z.object({
-
   username: z.string().min(1, "Username is required"),
-
   name: z.string().optional(),
-
   email: z.string().email("Invalid email"),
-
   phone: z.string().optional(),
-
   rollNumber: z.string().optional(),
-
   semester: z.number().optional(),
-
   college: z.string().optional(),
-
   collegeId: z.string().optional(),   // ✅ FIX
-
   userType: z.string().optional(),
-
-  password: z.string().min(
-    6,
-    "Password must be at least 6 characters"
-  ),
-
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 export const loginSchema = z.object({
@@ -337,6 +343,9 @@ export const insertReactionSchema = z.object({
 // Type exports
 export type UserSession = typeof userSessions.$inferSelect;
 export type College = typeof colleges.$inferSelect;
+// ✅ NEW types
+export type Template = typeof templates.$inferSelect;
+export type CollegeSettings = typeof collegeSettings.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Complaint = typeof complaints.$inferSelect;

@@ -31,10 +31,10 @@ class DatabaseStorage {
         return user || undefined;
     }
     async createUser(insertUser) {
-        const hashedPassword = await hashPassword(insertUser.password);
+        // password already hashed in routes.ts
         const [user] = await db_1.db
             .insert(schema_1.users)
-            .values({ ...insertUser, password: hashedPassword })
+            .values(insertUser)
             .returning();
         return user;
     }

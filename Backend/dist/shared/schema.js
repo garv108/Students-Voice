@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.URGENCY_THRESHOLDS = exports.EMOJI_REACTIONS = exports.insertReactionSchema = exports.insertComplaintSchema = exports.resendVerificationSchema = exports.verifyEmailSchema = exports.loginSchema = exports.insertUserSchema = exports.bundlePurchasesRelations = exports.bundlePurchases = exports.notesBundlesRelations = exports.notesBundles = exports.notesPurchasesRelations = exports.notesPurchases = exports.notesFilesRelations = exports.notesFiles = exports.notesCategoriesRelations = exports.notesCategories = exports.clusterGroupsRelations = exports.clusterGroups = exports.abuseLogsRelations = exports.abuseLogs = exports.likesRelations = exports.likes = exports.reactionsRelations = exports.reactions = exports.complaintsRelations = exports.complaints = exports.usersRelations = exports.users = exports.userSessionsRelations = exports.userSessions = exports.paymentStatusEnum = exports.severityEnum = exports.urgencyEnum = exports.statusEnum = exports.roleEnum = void 0;
+exports.URGENCY_THRESHOLDS = exports.EMOJI_REACTIONS = exports.insertReactionSchema = exports.insertComplaintSchema = exports.resendVerificationSchema = exports.verifyEmailSchema = exports.loginSchema = exports.insertUserSchema = exports.bundlePurchasesRelations = exports.bundlePurchases = exports.notesBundlesRelations = exports.notesBundles = exports.notesPurchasesRelations = exports.notesPurchases = exports.notesFilesRelations = exports.notesFiles = exports.notesCategoriesRelations = exports.notesCategories = exports.clusterGroupsRelations = exports.clusterGroups = exports.abuseLogsRelations = exports.abuseLogs = exports.likesRelations = exports.likes = exports.reactionsRelations = exports.reactions = exports.complaintsRelations = exports.complaints = exports.usersRelations = exports.collegeSettingsRelations = exports.users = exports.collegeSettings = exports.templates = exports.colleges = exports.userSessionsRelations = exports.userSessions = exports.paymentStatusEnum = exports.severityEnum = exports.urgencyEnum = exports.statusEnum = exports.roleEnum = void 0;
 exports.calculateUrgency = calculateUrgency;
 const drizzle_orm_1 = require("drizzle-orm");
 const pg_core_1 = require("drizzle-orm/pg-core");
@@ -22,21 +22,58 @@ exports.userSessionsRelations = (0, drizzle_orm_1.relations)(exports.userSession
         references: [exports.users.id],
     }),
 }));
+exports.colleges = (0, pg_core_1.pgTable)("colleges", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    name: (0, pg_core_1.text)("name").notNull().unique(),
+    code: (0, pg_core_1.text)("code"),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+// ✅ NEW: templates table
+exports.templates = (0, pg_core_1.pgTable)("templates", {
+    id: (0, pg_core_1.text)("id").primaryKey(),
+    name: (0, pg_core_1.text)("name").notNull(),
+    layout: (0, pg_core_1.json)("layout"),
+    config: (0, pg_core_1.json)("config"),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
+// ✅ NEW: college_settings table
+exports.collegeSettings = (0, pg_core_1.pgTable)("college_settings", {
+    id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
+    collegeId: (0, pg_core_1.varchar)("college_id").references(() => exports.colleges.id, { onDelete: "cascade" }),
+    templateId: (0, pg_core_1.text)("template_id").references(() => exports.templates.id),
+    themeColor: (0, pg_core_1.text)("theme_color"),
+    logoUrl: (0, pg_core_1.text)("logo_url"),
+    features: (0, pg_core_1.json)("features"),
+    customFields: (0, pg_core_1.json)("custom_fields"),
+    createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+});
 exports.users = (0, pg_core_1.pgTable)("users", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     username: (0, pg_core_1.text)("username").notNull().unique(),
+    name: (0, pg_core_1.text)("name"),
     email: (0, pg_core_1.text)("email").notNull().unique(),
+    phone: (0, pg_core_1.text)("phone"),
+    rollNumber: (0, pg_core_1.text)("roll_number"),
+    semester: (0, pg_core_1.integer)("semester"),
+    college: (0, pg_core_1.text)("college"),
+    collegeId: (0, pg_core_1.varchar)("college_id"),
+    userType: (0, pg_core_1.text)("user_type"),
     password: (0, pg_core_1.text)("password").notNull(),
     role: (0, exports.roleEnum)("role").notNull().default("student"),
-    // New verification columns
-    rollNumber: (0, pg_core_1.text)("roll_number").unique(),
-    userType: (0, pg_core_1.text)("user_type").default("student"), // student, faculty, admin
-    emailVerified: (0, pg_core_1.boolean)("email_verified").default(false),
-    verificationToken: (0, pg_core_1.text)("verification_token"),
-    verificationTokenExpiry: (0, pg_core_1.timestamp)("verification_token_expiry"),
     bannedUntil: (0, pg_core_1.timestamp)("banned_until"),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
 });
+// ✅ NEW: relations for collegeSettings and templates
+exports.collegeSettingsRelations = (0, drizzle_orm_1.relations)(exports.collegeSettings, ({ one }) => ({
+    college: one(exports.colleges, {
+        fields: [exports.collegeSettings.collegeId],
+        references: [exports.colleges.id],
+    }),
+    template: one(exports.templates, {
+        fields: [exports.collegeSettings.templateId],
+        references: [exports.templates.id],
+    }),
+}));
 exports.usersRelations = (0, drizzle_orm_1.relations)(exports.users, ({ many, one }) => ({
     complaints: many(exports.complaints),
     reactions: many(exports.reactions),
@@ -46,6 +83,7 @@ exports.usersRelations = (0, drizzle_orm_1.relations)(exports.users, ({ many, on
 exports.complaints = (0, pg_core_1.pgTable)("complaints", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     userId: (0, pg_core_1.varchar)("user_id").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
+    collegeId: (0, pg_core_1.varchar)("college_id"),
     username: (0, pg_core_1.text)("username").notNull(),
     originalText: (0, pg_core_1.text)("original_text").notNull(),
     summary: (0, pg_core_1.text)("summary"),
@@ -237,13 +275,18 @@ exports.bundlePurchasesRelations = (0, drizzle_orm_1.relations)(exports.bundlePu
         references: [exports.users.id],
     }),
 }));
-// Validation schemas
+// Validation schemas (UPDATED)
 exports.insertUserSchema = zod_1.z.object({
     username: zod_1.z.string().min(1, "Username is required"),
+    name: zod_1.z.string().optional(),
     email: zod_1.z.string().email("Invalid email"),
+    phone: zod_1.z.string().optional(),
+    rollNumber: zod_1.z.string().optional(),
+    semester: zod_1.z.number().optional(),
+    college: zod_1.z.string().optional(),
+    collegeId: zod_1.z.string().optional(), // ✅ FIX
+    userType: zod_1.z.string().optional(),
     password: zod_1.z.string().min(6, "Password must be at least 6 characters"),
-    rollNumber: zod_1.z.string().regex(/^(2[2-6])(cs|ce|me|ee)\d{2}$/i, "Roll number must be in format: YYbbNN (e.g., 22CS05, 24EE12)"),
-    userType: zod_1.z.enum(["student", "faculty"]).default("student"),
 });
 exports.loginSchema = zod_1.z.object({
     username: zod_1.z.string().min(1, "Username is required"),

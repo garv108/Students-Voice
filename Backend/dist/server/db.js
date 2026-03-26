@@ -271,9 +271,9 @@ else {
         console.log("🔗 Connecting to PostgreSQL database...");
         exports.pool = pool = new Pool({
             connectionString: process.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 2000,
+            ssl: {
+                rejectUnauthorized: false,
+            },
         });
         exports.db = db = (0, node_postgres_1.drizzle)(pool, { schema });
         // Test connection and create tables

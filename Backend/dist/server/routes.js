@@ -16,6 +16,8 @@ const schema_2 = require("../shared/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const notes_storage_1 = require("./notes-storage");
 const multer_1 = __importDefault(require("multer"));
+const drizzle_orm_2 = require("drizzle-orm");
+const auth_1 = require("./routes/auth");
 const scryptAsync = (0, util_1.promisify)(crypto_1.scrypt);
 async function hashPassword(password) {
     const salt = (0, crypto_1.randomBytes)(16).toString("hex");
@@ -44,103 +46,32 @@ async function requireAdmin(req, res, next) {
     next();
 }
 async function registerRoutes(httpServer, app) {
-    // Session middleware is now in index.ts to avoid duplicates
-    app.post("/api/auth/signup", async (req, res) => {
+    (0, auth_1.registerAuthRoutes)(app);
+    app.get("/admin/clear-ban", async (_req, res) => {
         try {
-            const data = schema_1.insertUserSchema.parse(req.body);
-            const existingUsername = await storage_1.storage.getUserByUsername(data.username);
-            if (existingUsername) {
-                return res.status(400).json({ message: "Username already taken" });
-            }
-            const existingEmail = await storage_1.storage.getUserByEmail(data.email);
-            if (existingEmail) {
-                return res.status(400).json({ message: "Email already registered" });
-            }
-            const user = await storage_1.storage.createUser(data);
-            req.session.userId = user.id;
-            res.json({ user: { ...user, password: undefined } });
+            await db_1.db.execute((0, drizzle_orm_2.sql) `UPDATE users SET banned_until = NULL`);
+            res.json({ message: "All bans cleared" });
+        }
+        catch (err) {
+            console.error("Clear ban error:", err);
+            res.status(500).json({ error: "Failed" });
+        }
+    });
+    /* ================= AUTH ================= */
+    /* ================= COLLEGES ================= */
+    app.get("/api/colleges", async (_req, res) => {
+        try {
+            const result = await db_1.db.execute((0, drizzle_orm_2.sql) `SELECT id, name FROM colleges ORDER BY name`);
+            res.json(result.rows);
         }
         catch (error) {
-            if (error instanceof zod_1.z.ZodError) {
-                return res.status(400).json({ message: error.errors[0].message });
-            }
-            console.error("Signup error:", error);
-            res.status(500).json({ message: "Failed to create account" });
+            console.error("Get colleges error:", error);
+            res.status(500).json({
+                message: "Failed to load colleges"
+            });
         }
     });
-    app.post("/api/auth/login", async (req, res) => {
-        try {
-            const data = schema_1.loginSchema.parse(req.body);
-            const user = await storage_1.storage.validatePassword(data.username, data.password);
-            if (!user) {
-                return res.status(401).json({ message: "Invalid username or password" });
-            }
-            req.session.userId = user.id;
-            res.json({ user: { ...user, password: undefined } });
-        }
-        catch (error) {
-            if (error instanceof zod_1.z.ZodError) {
-                return res.status(400).json({ message: error.errors[0].message });
-            }
-            console.error("Login error:", error);
-            res.status(500).json({ message: "Login failed" });
-        }
-    });
-    app.post("/api/auth/logout", (req, res) => {
-        req.session.destroy((err) => {
-            if (err) {
-                return res.status(500).json({ message: "Logout failed" });
-            }
-            res.json({ message: "Logged out successfully" });
-        });
-    });
-    app.post("/api/auth/change-password", async (req, res) => {
-        try {
-            const { currentPassword, newPassword } = req.body;
-            const userId = req.session.userId;
-            if (!userId) {
-                return res.status(401).json({ message: "Not authenticated" });
-            }
-            if (!currentPassword || !newPassword) {
-                return res.status(400).json({ message: "Current and new password required" });
-            }
-            if (newPassword.length < 6) {
-                return res.status(400).json({ message: "New password must be at least 6 characters" });
-            }
-            // Get user
-            const user = await storage_1.storage.getUser(userId);
-            if (!user) {
-                return res.status(404).json({ message: "User not found" });
-            }
-            // Verify current password
-            const isValid = await comparePasswords(currentPassword, user.password);
-            if (!isValid) {
-                return res.status(401).json({ message: "Current password is incorrect" });
-            }
-            // Hash new password
-            const hashedPassword = await hashPassword(newPassword);
-            // Update password in database
-            await db_1.db.update(schema_2.users)
-                .set({ password: hashedPassword })
-                .where((0, drizzle_orm_1.eq)(schema_2.users.id, userId));
-            res.json({ success: true, message: "Password updated successfully" });
-        }
-        catch (error) {
-            console.error("Password change error:", error);
-            res.status(500).json({ message: "Failed to change password" });
-        }
-    });
-    app.get("/api/auth/me", async (req, res) => {
-        if (!req.session.userId) {
-            return res.status(401).json({ message: "Not authenticated" });
-        }
-        const user = await storage_1.storage.getUser(req.session.userId);
-        if (!user) {
-            req.session.destroy(() => { });
-            return res.status(401).json({ message: "User not found" });
-        }
-        res.json({ user: { ...user, password: undefined } });
-    });
+    /* ================= COMPLAINTS ================= */
     app.post("/api/complaints", requireAuth, async (req, res) => {
         try {
             const user = await storage_1.storage.getUser(req.session.userId);
@@ -150,7 +81,7 @@ async function registerRoutes(httpServer, app) {
             if (user.bannedUntil && new Date(user.bannedUntil) > new Date()) {
                 return res.status(403).json({
                     message: "Your account is temporarily banned",
-                    bannedUntil: user.bannedUntil
+                    bannedUntil: user.bannedUntil,
                 });
             }
             const data = schema_1.insertComplaintSchema.parse(req.body);
@@ -173,6 +104,7 @@ async function registerRoutes(httpServer, app) {
             const cluster = await storage_1.storage.getOrCreateCluster(analysis.keywords);
             const complaint = await storage_1.storage.createComplaint({
                 userId: user.id,
+                collegeId: user.collegeId ?? null, // ✅ MULTI-TENANT
                 username: user.username,
                 originalText: data.originalText,
                 summary: analysis.summary,
@@ -334,6 +266,7 @@ async function registerRoutes(httpServer, app) {
             res.status(500).json({ message: "Failed to delete complaint" });
         }
     });
+    /* ================= ADMIN ================= */
     app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
         try {
             const stats = await storage_1.storage.getAdminStats();
@@ -442,8 +375,7 @@ async function registerRoutes(httpServer, app) {
             res.status(500).json({ message: "Failed to unban user" });
         }
     });
-    // EduNotes Routes
-    // Public routes
+    /* ================= EDUNOTES ================= */
     app.get("/api/notes/categories", async (req, res) => {
         try {
             const categories = await db_1.db.select().from(schema_2.notesCategories);
@@ -475,24 +407,20 @@ async function registerRoutes(httpServer, app) {
             res.status(500).json({ message: "Failed to load bundles" });
         }
     });
-    // Authenticated routes
     app.post("/api/notes/purchase", requireAuth, async (req, res) => {
         try {
             const { fileId, paymentProof } = req.body;
             const userId = req.session.userId;
-            // Check if file exists
             const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, fileId)).limit(1);
             if (!file.length) {
                 return res.status(404).json({ message: "File not found" });
             }
-            // Check if already purchased
             const existingPurchase = await db_1.db.select().from(schema_2.notesPurchases)
                 .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.fileId, fileId)))
                 .limit(1);
             if (existingPurchase.length) {
                 return res.status(400).json({ message: "Already purchased" });
             }
-            // Create purchase record
             const purchase = await db_1.db.insert(schema_2.notesPurchases).values({
                 buyerId: userId,
                 fileId,
@@ -521,19 +449,16 @@ async function registerRoutes(httpServer, app) {
         try {
             const { fileId } = req.params;
             const userId = req.session.userId;
-            // Check if user has verified purchase
             const purchase = await db_1.db.select().from(schema_2.notesPurchases)
                 .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.notesPurchases.buyerId, userId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.fileId, fileId), (0, drizzle_orm_1.eq)(schema_2.notesPurchases.paymentStatus, "verified")))
                 .limit(1);
             if (!purchase.length) {
                 return res.status(403).json({ message: "Purchase not verified" });
             }
-            // Get file info
             const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, fileId)).limit(1);
             if (!file.length) {
                 return res.status(404).json({ message: "File not found" });
             }
-            // Generate signed URL
             const signedUrl = await (0, notes_storage_1.getSignedUrl)(file[0].filePath);
             res.json({ downloadUrl: signedUrl });
         }
@@ -542,18 +467,15 @@ async function registerRoutes(httpServer, app) {
             res.status(500).json({ message: "Failed to generate download link" });
         }
     });
-    // Admin routes
     const upload = (0, multer_1.default)({ limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
-    app.post("/api/admin/notes/upload", requireAdmin, upload.single('file'), async (req, res) => {
+    app.post("/api/admin/notes/upload", requireAdmin, upload.single("file"), async (req, res) => {
         try {
             const { categoryId, title, description, price } = req.body;
             const file = req.file;
             if (!file) {
                 return res.status(400).json({ message: "No file uploaded" });
             }
-            // Upload to Supabase
             const uploadResult = await (0, notes_storage_1.uploadFile)(file.buffer, file.originalname, categoryId);
-            // Save to database
             const fileRecord = await db_1.db.insert(schema_2.notesFiles).values({
                 categoryId,
                 title,
@@ -602,14 +524,11 @@ async function registerRoutes(httpServer, app) {
     app.delete("/api/admin/notes/file/:id", requireAdmin, async (req, res) => {
         try {
             const { id } = req.params;
-            // Get file info
             const file = await db_1.db.select().from(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, id)).limit(1);
             if (!file.length) {
                 return res.status(404).json({ message: "File not found" });
             }
-            // Delete from Supabase
             await (0, notes_storage_1.deleteFile)(file[0].filePath);
-            // Delete from database
             await db_1.db.delete(schema_2.notesFiles).where((0, drizzle_orm_1.eq)(schema_2.notesFiles.id, id));
             res.json({ success: true });
         }
