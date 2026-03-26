@@ -8,9 +8,9 @@ import { z } from "zod";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import { db } from "./db";
-import { users, notesCategories, notesFiles, notesBundles, notesPurchases, bundlePurchases } from "../shared/schema";
-import { eq, and, or } from "drizzle-orm";
-import { uploadFile, getSignedUrl, deleteFile, getFileMetadata } from "./notes-storage";
+import { users, notesCategories, notesFiles, notesBundles, notesPurchases } from "../shared/schema";
+import { eq, and } from "drizzle-orm";
+import { uploadFile, getSignedUrl, deleteFile } from "./notes-storage";
 import multer from "multer";
 import { sql } from "drizzle-orm";
 
@@ -53,15 +53,16 @@ export async function registerRoutes(
   // Session middleware is now in index.ts to avoid duplicates
 
   app.get("/admin/clear-ban", async (_req, res) => {
-  try {
-    await db.execute(sql`UPDATE users SET banned_until = NULL`);
-    res.json({ message: "All bans cleared" });
-  } catch (err) {
-    console.error("Clear ban error:", err);
-    res.status(500).json({ error: "Failed" });
-  }
-});
+    try {
+      await db.execute(sql`UPDATE users SET banned_until = NULL`);
+      res.json({ message: "All bans cleared" });
+    } catch (err) {
+      console.error("Clear ban error:", err);
+      res.status(500).json({ error: "Failed" });
+    }
+  });
 
+  // ====================== UPDATED SIGNUP ROUTE ======================
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const data = insertUserSchema.parse(req.body);
@@ -76,10 +77,29 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Email already registered" });
       }
 
-      const user = await storage.createUser(data);
+      const hashedPassword = await hashPassword(data.password);
+
+      // Pass optional fields directly – they are already undefined if not provided
+      const user = await storage.createUser({
+        username: data.username,
+        email: data.email,
+        password: hashedPassword,
+        name: data.name,
+        phone: data.phone,
+        rollNumber: data.rollNumber,
+        semester: data.semester,
+        college: data.college,
+        userType: data.userType,
+      });
+
       (req as any).session.userId = user.id;
 
-      res.json({ user: { ...user, password: undefined } });
+      res.json({
+        user: {
+          ...user,
+          password: undefined,
+        },
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -88,6 +108,7 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to create account" });
     }
   });
+  // ==================================================================
 
   app.post("/api/auth/login", async (req, res) => {
     try {
@@ -135,22 +156,18 @@ export async function registerRoutes(
         return res.status(400).json({ message: "New password must be at least 6 characters" });
       }
 
-      // Get user
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Verify current password
       const isValid = await comparePasswords(currentPassword, user.password);
       if (!isValid) {
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
-      // Hash new password
       const hashedPassword = await hashPassword(newPassword);
 
-      // Update password in database
       await db.update(users)
         .set({ password: hashedPassword })
         .where(eq(users.id, userId));
@@ -184,15 +201,15 @@ export async function registerRoutes(
       }
 
       if (user.bannedUntil && new Date(user.bannedUntil) > new Date()) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: "Your account is temporarily banned",
-          bannedUntil: user.bannedUntil
+          bannedUntil: user.bannedUntil,
         });
       }
 
       const data = insertComplaintSchema.parse(req.body);
 
-  const profanityCheck = await detectProfanity(data.originalText);
+      const profanityCheck = await detectProfanity(data.originalText);
       if (profanityCheck.isAbusive) {
         const banUntil = getBanExpiration(3);
         await storage.updateUserBan(user.id, banUntil);
@@ -398,8 +415,8 @@ export async function registerRoutes(
     }
   });
 
-app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
-      try {
+  app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
+    try {
       const stats = await storage.getAdminStats();
       const complaints = await storage.getComplaints();
       const users = await storage.getAllUsers();
@@ -554,13 +571,11 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
       const { fileId, paymentProof } = req.body;
       const userId = (req as any).session.userId!;
 
-      // Check if file exists
       const file = await db.select().from(notesFiles).where(eq(notesFiles.id, fileId)).limit(1);
       if (!file.length) {
         return res.status(404).json({ message: "File not found" });
       }
 
-      // Check if already purchased
       const existingPurchase = await db.select().from(notesPurchases)
         .where(and(eq(notesPurchases.buyerId, userId), eq(notesPurchases.fileId, fileId)))
         .limit(1);
@@ -569,7 +584,6 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
         return res.status(400).json({ message: "Already purchased" });
       }
 
-      // Create purchase record
       const purchase = await db.insert(notesPurchases).values({
         buyerId: userId,
         fileId,
@@ -600,7 +614,6 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
       const { fileId } = req.params;
       const userId = (req as any).session.userId!;
 
-      // Check if user has verified purchase
       const purchase = await db.select().from(notesPurchases)
         .where(and(eq(notesPurchases.buyerId, userId), eq(notesPurchases.fileId, fileId), eq(notesPurchases.paymentStatus, "verified")))
         .limit(1);
@@ -609,13 +622,11 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
         return res.status(403).json({ message: "Purchase not verified" });
       }
 
-      // Get file info
       const file = await db.select().from(notesFiles).where(eq(notesFiles.id, fileId)).limit(1);
       if (!file.length) {
         return res.status(404).json({ message: "File not found" });
       }
 
-      // Generate signed URL
       const signedUrl = await getSignedUrl(file[0].filePath);
       res.json({ downloadUrl: signedUrl });
     } catch (error) {
@@ -636,10 +647,8 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      // Upload to Supabase
       const uploadResult = await uploadFile(file.buffer, file.originalname, categoryId);
 
-      // Save to database
       const fileRecord = await db.insert(notesFiles).values({
         categoryId,
         title,
@@ -694,16 +703,13 @@ app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
 
-      // Get file info
       const file = await db.select().from(notesFiles).where(eq(notesFiles.id, id)).limit(1);
       if (!file.length) {
         return res.status(404).json({ message: "File not found" });
       }
 
-      // Delete from Supabase
       await deleteFile(file[0].filePath);
 
-      // Delete from database
       await db.delete(notesFiles).where(eq(notesFiles.id, id));
 
       res.json({ success: true });

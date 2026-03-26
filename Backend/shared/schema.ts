@@ -25,11 +25,29 @@ export const userSessionsRelations = relations(userSessions, ({ one }) => ({
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
   username: text("username").notNull().unique(),
+
+  name: text("name"),
+
   email: text("email").notNull().unique(),
+
+  phone: text("phone"),
+
+  rollNumber: text("roll_number"),
+
+  semester: integer("semester"),
+
+  college: text("college"),
+
+  userType: text("user_type"),
+
   password: text("password").notNull(),
+
   role: roleEnum("role").notNull().default("student"),
+
   bannedUntil: timestamp("banned_until"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -259,12 +277,22 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
 
 export const insertUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
-  email: z.string().email("Invalid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
 
-  // 🔥 Made optional to fix signup mismatch
+  name: z.string().optional(),
+
+  email: z.string().email("Invalid email"),
+
+  phone: z.string().optional(),
+
   rollNumber: z.string().optional(),
-  userType: z.enum(["student", "faculty"]).optional(),
+
+  semester: z.number().optional(),
+
+  college: z.string().optional(),
+
+  userType: z.string().optional(),
+
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 export const loginSchema = z.object({
