@@ -17,6 +17,7 @@ const auth_1 = require("./routes/auth");
 const colleges_1 = require("./routes/colleges");
 const complaints_1 = require("./routes/complaints");
 const admin_1 = require("./routes/admin");
+const settings_1 = require("./routes/settings");
 const scryptAsync = (0, util_1.promisify)(crypto_1.scrypt);
 async function hashPassword(password) {
     const salt = (0, crypto_1.randomBytes)(16).toString("hex");
@@ -49,6 +50,7 @@ async function registerRoutes(httpServer, app) {
     (0, colleges_1.registerCollegeRoutes)(app);
     (0, complaints_1.registerComplaintRoutes)(app);
     (0, admin_1.registerAdminRoutes)(app);
+    (0, settings_1.registerSettingsRoutes)(app);
     app.get("/admin/clear-ban", async (_req, res) => {
         try {
             await db_1.db.execute((0, drizzle_orm_2.sql) `UPDATE users SET banned_until = NULL`);

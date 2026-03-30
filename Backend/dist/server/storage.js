@@ -65,11 +65,25 @@ class DatabaseStorage {
     async getComplaints() {
         return db_1.db.select().from(schema_1.complaints).orderBy((0, drizzle_orm_1.desc)(schema_1.complaints.createdAt));
     }
-    async getLeaderboardComplaints() {
+    async getLeaderboardComplaints(collegeId) {
+        if (collegeId) {
+            return db_1.db
+                .select()
+                .from(schema_1.complaints)
+                .where((0, drizzle_orm_1.eq)(schema_1.complaints.collegeId, collegeId))
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.complaints.likesCount));
+        }
         return db_1.db
             .select()
             .from(schema_1.complaints)
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.complaints.similarComplaintsCount), (0, drizzle_orm_1.desc)(schema_1.complaints.likesCount), (0, drizzle_orm_1.desc)(schema_1.complaints.createdAt));
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.complaints.likesCount));
+    }
+    async getLeaderboardComplaintsByCollege(collegeId) {
+        return db_1.db
+            .select()
+            .from(schema_1.complaints)
+            .where((0, drizzle_orm_1.eq)(schema_1.complaints.collegeId, collegeId))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.complaints.likesCount));
     }
     async updateComplaint(id, updates) {
         const [updated] = await db_1.db
@@ -245,7 +259,27 @@ class DatabaseStorage {
             await this.updateClusterCount(cluster.id);
         }
     }
-    async getAdminStats() {
+    async getAdminStats(collegeId) {
+        if (collegeId) {
+            const complaintsFiltered = await db_1.db
+                .select()
+                .from(schema_1.complaints)
+                .where((0, drizzle_orm_1.eq)(schema_1.complaints.collegeId, collegeId));
+            const allUsers = await db_1.db.select().from(schema_1.users);
+            const allAbuseLogs = await db_1.db.select().from(schema_1.abuseLogs);
+            const now = new Date();
+            return {
+                totalComplaints: complaintsFiltered.length,
+                pendingComplaints: complaintsFiltered.filter((c) => c.status === "pending").length,
+                solvedComplaints: complaintsFiltered.filter((c) => c.solved).length,
+                urgentCount: complaintsFiltered.filter((c) => c.urgency === "urgent").length,
+                criticalCount: complaintsFiltered.filter((c) => c.urgency === "critical" || c.urgency === "top_priority").length,
+                emergencyCount: complaintsFiltered.filter((c) => c.urgency === "emergency").length,
+                totalUsers: allUsers.length,
+                bannedUsers: allUsers.filter((u) => u.bannedUntil && new Date(u.bannedUntil) > now).length,
+                abuseLogs: allAbuseLogs.length,
+            };
+        }
         const allComplaints = await db_1.db.select().from(schema_1.complaints);
         const allUsers = await db_1.db.select().from(schema_1.users);
         const allAbuseLogs = await db_1.db.select().from(schema_1.abuseLogs);
@@ -261,6 +295,28 @@ class DatabaseStorage {
             bannedUsers: allUsers.filter((u) => u.bannedUntil && new Date(u.bannedUntil) > now).length,
             abuseLogs: allAbuseLogs.length,
         };
+    }
+    async getCollegeSettings(collegeId) {
+        const result = await db_1.db
+            .select()
+            .from(schema_1.collegeSettings)
+            .where((0, drizzle_orm_1.eq)(schema_1.collegeSettings.collegeId, collegeId));
+        return result[0] ?? null;
+    }
+    async setCollegeSettings(collegeId, data) {
+        const existing = await this.getCollegeSettings(collegeId);
+        if (existing) {
+            await db_1.db
+                .update(schema_1.collegeSettings)
+                .set(data)
+                .where((0, drizzle_orm_1.eq)(schema_1.collegeSettings.collegeId, collegeId));
+        }
+        else {
+            await db_1.db.insert(schema_1.collegeSettings).values({
+                collegeId,
+                ...data,
+            });
+        }
     }
 }
 exports.DatabaseStorage = DatabaseStorage;

@@ -17,7 +17,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerCollegeRoutes } from "./routes/colleges";
 import { registerComplaintRoutes } from "./routes/complaints";
 import { registerAdminRoutes } from "./routes/admin";
-
+import { registerSettingsRoutes } from "./routes/settings";
 
 const scryptAsync = promisify(scrypt);
 
@@ -60,6 +60,8 @@ registerAuthRoutes(app);
 registerCollegeRoutes(app);
 registerComplaintRoutes(app);
 registerAdminRoutes(app);
+registerSettingsRoutes(app);
+
 
   app.get("/admin/clear-ban", async (_req, res) => {
     try {
