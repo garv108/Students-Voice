@@ -76,7 +76,7 @@ export function registerAdminRoutes(app: Express) {
         const users =
           await storage.getAllUsers();
 
-        res.json({ users });
+        res.json(users);
 
       } catch (error) {
 
@@ -173,10 +173,7 @@ export function registerAdminRoutes(app: Express) {
     }
   );
 
-  app.get(
-  "/api/admin/dashboard",
-  requireAdmin,
-  async (req, res) => {
+  app.get(  "/api/admin/dashboard", requireAdmin, async (req, res) => {
     try {
 
       const stats = await storage.getAdminStats();
