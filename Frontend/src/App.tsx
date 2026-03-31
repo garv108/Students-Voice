@@ -5,7 +5,6 @@ import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth.tsx";
 
-// Pages
 import Landing from "./pages/landing";
 import Home from "./pages/home";
 import Login from "./pages/login";

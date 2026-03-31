@@ -24,9 +24,8 @@ export function registerSettingsRoutes(app: Express) {
   app.get(
     "/api/college/settings",
     requireCollege,
-    async (req: CollegeRequest, res) => {
-
-      try {
+    async (req: CollegeRequest & { body: any }, res) => {
+        try {
 
         const settings =
           await storage.getCollegeSettings(
@@ -56,7 +55,7 @@ export function registerSettingsRoutes(app: Express) {
     "/api/college/settings",
     requireCollege,
     requireAdmin,
-    async (req: CollegeRequest, res) => {
+    async (req: CollegeRequest & { body: any }, res) => {
 
       try {
 

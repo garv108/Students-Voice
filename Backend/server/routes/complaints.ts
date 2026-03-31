@@ -42,8 +42,8 @@ export function registerComplaintRoutes(app: Express) {
   app.post(
     "/api/complaints",
     requireCollege,
-    async (req: CollegeRequest, res) => {
-      try {
+   async (req: CollegeRequest & { body: any }, res) => {    
+        try {
         const user = req.user;
 
         if (!user) {
@@ -133,7 +133,7 @@ export function registerComplaintRoutes(app: Express) {
   app.get(
     "/api/leaderboard",
     requireCollege,
-    async (req: CollegeRequest, res) => {
+    async (req: CollegeRequest & { body: any }, res) => {
       try {
         const complaintsData = await storage.getLeaderboardComplaints();(
           req.collegeId!

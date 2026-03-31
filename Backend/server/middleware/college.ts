@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 
-export interface CollegeRequest extends Request {
+export interface CollegeRequest extends Request<any, any, any> {
   collegeId?: string;
   user?: any;
 }
