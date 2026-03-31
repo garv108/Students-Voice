@@ -173,4 +173,29 @@ export function registerAdminRoutes(app: Express) {
     }
   );
 
+  app.get(
+  "/api/admin/dashboard",
+  requireAdmin,
+  async (req, res) => {
+    try {
+
+      const stats = await storage.getAdminStats();
+      const complaints = await storage.getLeaderboardComplaints();
+
+      res.json({
+        stats,
+        complaints
+      });
+
+    } catch (error) {
+
+      console.error("Dashboard error:", error);
+
+      res.status(500).json({
+        message: "Failed to load dashboard"
+      });
+
+       } 
+     }
+   );
 }
