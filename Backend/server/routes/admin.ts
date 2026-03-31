@@ -1,30 +1,13 @@
-import { Express, Request, Response, NextFunction } from "express";
+import { Express } from "express";
 import { storage } from "../storage";
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!(req as any).session.userId) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-  next();
-}
-
-async function requireAdmin(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  if (!(req as any).session.userId) {
-    return res.status(401).json({ message: "Authentication required" });
+function requireAdmin(req: any, res: any, next: any) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ message: "Not authenticated" });
   }
 
-  const user = await storage.getUser(
-    (req as any).session.userId
-  );
-
-  if (!user || (user.role !== "admin" && user.role !== "moderator")) {
-    return res.status(403).json({
-      message: "Admin access required",
-    });
+  if (req.user?.role !== "admin" && req.user?.role !== "moderator") {
+    return res.status(403).json({ message: "Admin access required" });
   }
 
   next();
@@ -32,167 +15,76 @@ async function requireAdmin(
 
 export function registerAdminRoutes(app: Express) {
 
-  /* ADMIN STATS */
-
-  app.get(
-    "/api/admin/stats",
-    requireAdmin,
-    async (req, res) => {
-
-      try {
-
-        const stats =
-          await storage.getAdminStats();
-
-        res.json(stats);
-
-      } catch (error) {
-
-        console.error(
-          "Admin stats error:",
-          error
-        );
-
-        res.status(500).json({
-          message:
-            "Failed to load stats",
-        });
-
-      }
-
-    }
-  );
-
-
-  /* ADMIN USERS */
-
-  app.get(
-    "/api/admin/users",
-    requireAdmin,
-    async (req, res) => {
-
-      try {
-
-        const users =
-          await storage.getAllUsers();
-
-        res.json(users);
-
-      } catch (error) {
-
-        console.error(
-          "Admin users error:",
-          error
-        );
-
-        res.status(500).json({
-          message:
-            "Failed to load users",
-        });
-
-      }
-
-    }
-  );
-
-
-  /* BAN USER */
-
-  app.post(
-    "/api/admin/ban",
-    requireAdmin,
-    async (req, res) => {
-
-      try {
-
-        const { userId, until } =
-          req.body;
-
-        await storage.updateUserBan(
-          userId,
-          until
-        );
-
-        res.json({
-          success: true,
-        });
-
-      } catch (error) {
-
-        console.error(
-          "Ban error:",
-          error
-        );
-
-        res.status(500).json({
-          message:
-            "Failed to ban",
-        });
-
-      }
-
-    }
-  );
-
-
-  /* UNBAN */
-
-  app.post(
-    "/api/admin/unban",
-    requireAdmin,
-    async (req, res) => {
-
-      try {
-
-        const { userId } =
-          req.body;
-
-        await storage.updateUserBan(
-          userId,
-          null
-        );
-
-        res.json({
-          success: true,
-        });
-
-      } catch (error) {
-
-        console.error(
-          "Unban error:",
-          error
-        );
-
-        res.status(500).json({
-          message:
-            "Failed",
-        });
-
-      }
-
-    }
-  );
-
-  app.get(  "/api/admin/dashboard", requireAdmin, async (req, res) => {
+  // ✅ DASHBOARD (FIXED)
+  app.get("/api/admin/dashboard", requireAdmin, async (req: any, res) => {
     try {
 
       const stats = await storage.getAdminStats();
       const complaints = await storage.getLeaderboardComplaints();
+      const users = await storage.getAllUsers();
+      const abuseLogs = await storage.getAbuseLogs();
 
       res.json({
         stats,
-        complaints
+        complaints,
+        users,
+        abuseLogs
       });
 
     } catch (error) {
-
       console.error("Dashboard error:", error);
+      res.status(500).json({ message: "Failed to load dashboard" });
+    }
+  });
 
-      res.status(500).json({
-        message: "Failed to load dashboard"
+  // ✅ UPDATE ROLE
+  app.put("/api/admin/users/:id/role", requireAdmin, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { role } = req.body;
+
+      await storage.updateUserRole(id, role);
+
+      res.json({ success: true });
+
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update role" });
+    }
+  });
+
+  // ✅ UPDATE COMPLAINT
+  app.put("/api/admin/complaints/:id", requireAdmin, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { originalText, status, urgency } = req.body;
+
+      await storage.updateComplaint(id, {
+        originalText,
+        status,
+        urgency
       });
 
-       } 
-     }
-   );
+      res.json({ success: true });
+
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update complaint" });
+    }
+  });
+
+  // ✅ BULK DELETE (uses existing function)
+  app.delete("/api/admin/complaints/bulk", requireAdmin, async (req: any, res) => {
+    try {
+      const { ids } = req.body;
+
+      for (const id of ids) {
+        await storage.deleteComplaint(id);
+      }
+
+      res.json({ success: true });
+
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete complaints" });
+    }
+  });
+
 }

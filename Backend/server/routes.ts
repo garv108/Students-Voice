@@ -19,6 +19,7 @@ import { registerComplaintRoutes } from "./routes/complaints";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerSettingsRoutes } from "./routes/settings";
 
+
 const scryptAsync = promisify(scrypt);
 
 async function hashPassword(password: string): Promise<string> {
