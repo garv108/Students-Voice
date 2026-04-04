@@ -5,6 +5,7 @@ import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth.tsx";
 
+// Pages
 import Landing from "./pages/landing";
 import Home from "./pages/home";
 import Login from "./pages/login";
@@ -13,7 +14,7 @@ import Submit from "./pages/submit";
 import Notes from "./pages/notes";
 import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
-
+import VerifyEmail from "./pages/VerifyEmail";
 
 // =============================
 // Protected Route (Login Only)
@@ -35,7 +36,6 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   return <Component />;
 }
-
 
 // =============================
 // Admin Route (Role-Based)
@@ -62,43 +62,35 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   return <Component />;
 }
 
-
 // =============================
-// Router
+// Router Component
 // =============================
 function Router() {
   return (
     <Switch>
-
       <Route path="/" component={Landing} />
-
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
-
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/dashboard">
         <ProtectedRoute component={Home} />
       </Route>
-
       <Route path="/submit">
         <ProtectedRoute component={Submit} />
       </Route>
-
       <Route path="/notes">
         <ProtectedRoute component={Notes} />
       </Route>
-
       <Route path="/admin">
         <AdminRoute component={Admin} />
       </Route>
-
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-
 // =============================
-// App Wrapper
+// App Component
 // =============================
 function App() {
   return (

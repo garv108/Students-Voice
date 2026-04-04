@@ -18,7 +18,7 @@ export const userSessions = pgTable("user_sessions", {
 
 export const userSessionsRelations = relations(userSessions, ({ one }) => ({
   user: one(users, {
-    fields: [userSessions.sid], // Note: Using sid since no user_id column
+    fields: [userSessions.sid],
     references: [users.id],
   }),
 }));
@@ -66,6 +66,12 @@ export const users = pgTable("users", {
   role: roleEnum("role").notNull().default("student"),
   bannedUntil: timestamp("banned_until"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  
+  // ✅ NEW FIELDS FOR EMAIL VERIFICATION
+  isVerified: boolean("is_verified").notNull().default(false),
+  verificationToken: text("verification_token"),
+  verificationTokenExpiry: timestamp("verification_token_expiry"),
+  verifiedAt: timestamp("verified_at"),
 });
 
 // ✅ NEW: relations for collegeSettings and templates
@@ -212,9 +218,9 @@ export const notesFiles = pgTable("notes_files", {
   categoryId: varchar("category_id").notNull().references(() => notesCategories.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
-  fileUrl: text("file_url").notNull(), // Supabase URL
-  price: integer("price").notNull(), // Price in rupees
-  isFree: boolean("is_free").notNull().default(false), // Semester 1 files are free
+  fileUrl: text("file_url").notNull(),
+  price: integer("price").notNull(),
+  isFree: boolean("is_free").notNull().default(false),
   uploadedBy: varchar("uploaded_by").notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -235,9 +241,9 @@ export const notesPurchases = pgTable("notes_purchases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   fileId: varchar("file_id").notNull().references(() => notesFiles.id, { onDelete: "cascade" }),
   buyerId: varchar("buyer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  paymentProof: text("payment_proof").notNull(), // Screenshot URL
+  paymentProof: text("payment_proof").notNull(),
   paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
-  verifiedBy: varchar("verified_by").references(() => users.id), // Admin who verified
+  verifiedBy: varchar("verified_by").references(() => users.id),
   verifiedAt: timestamp("verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -262,9 +268,9 @@ export const notesBundles = pgTable("notes_bundles", {
   categoryId: varchar("category_id").notNull().references(() => notesCategories.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
-  price: integer("price").notNull(), // Discounted bundle price
+  price: integer("price").notNull(),
   discountPercentage: integer("discount_percentage").notNull(),
-  fileIds: text("file_ids").array().notNull(), // Array of file IDs in this bundle
+  fileIds: text("file_ids").array().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -280,9 +286,9 @@ export const bundlePurchases = pgTable("bundle_purchases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   bundleId: varchar("bundle_id").notNull().references(() => notesBundles.id, { onDelete: "cascade" }),
   buyerId: varchar("buyer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  paymentProof: text("payment_proof").notNull(), // Screenshot URL
+  paymentProof: text("payment_proof").notNull(),
   paymentStatus: paymentStatusEnum("payment_status").notNull().default("pending"),
-  verifiedBy: varchar("verified_by").references(() => users.id), // Admin who verified
+  verifiedBy: varchar("verified_by").references(() => users.id),
   verifiedAt: timestamp("verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -304,7 +310,6 @@ export const bundlePurchasesRelations = relations(bundlePurchases, ({ one }) => 
 
 
 // Validation schemas (UPDATED)
-
 export const insertUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   name: z.string().optional(),
@@ -313,7 +318,7 @@ export const insertUserSchema = z.object({
   rollNumber: z.string().optional(),
   semester: z.number().optional(),
   college: z.string().optional(),
-  collegeId: z.string().optional(),   // ✅ FIX
+  collegeId: z.string().optional(),
   userType: z.string().optional(),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
@@ -343,7 +348,6 @@ export const insertReactionSchema = z.object({
 // Type exports
 export type UserSession = typeof userSessions.$inferSelect;
 export type College = typeof colleges.$inferSelect;
-// ✅ NEW types
 export type Template = typeof templates.$inferSelect;
 export type CollegeSettings = typeof collegeSettings.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

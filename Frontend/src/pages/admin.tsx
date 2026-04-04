@@ -235,6 +235,7 @@ export default function Admin() {
     },
   });
 
+  
   // Handle loading state
   if (authLoading || isAuthorized === null) {
     return (

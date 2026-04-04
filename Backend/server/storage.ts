@@ -13,8 +13,7 @@
   type Reaction,
   type InsertReaction,
   type Like,
-  type AbuseLog, 
-
+  type AbuseLog,
   type ClusterGroup,
   calculateUrgency,
 } from "../shared/schema";
@@ -46,6 +45,11 @@ export interface IStorage {
   updateUserBan(userId: string, bannedUntil: Date | null): Promise<void>;
   updateUserRole(userId: string, role: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
+  
+  // ✅ NEW VERIFICATION METHODS
+  setVerificationToken(userId: string, token: string, expiry: Date): Promise<void>;
+  verifyUser(token: string): Promise<boolean>;
+  isUserVerified(userId: string): Promise<boolean>;
   
   createComplaint(complaint: Omit<Complaint, "id" | "createdAt">): Promise<Complaint>;
   getComplaint(id: string): Promise<Complaint | undefined>;
@@ -101,15 +105,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-
-  // password already hashed in routes.ts
-  const [user] = await db
-    .insert(users)
-    .values(insertUser)
-    .returning();
-
-  return user;
-}
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
 
   async validatePassword(username: string, password: string): Promise<User | null> {
     const user = await this.getUserByUsername(username);
@@ -128,6 +129,53 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  // ✅ NEW VERIFICATION METHODS
+  async setVerificationToken(userId: string, token: string, expiry: Date): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        verificationToken: token,
+        verificationTokenExpiry: expiry,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async verifyUser(token: string): Promise<boolean> {
+    const now = new Date();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.verificationToken, token),
+          sql`${users.verificationTokenExpiry} > ${now}`
+        )
+      );
+
+    if (!user) return false;
+
+    await db
+      .update(users)
+      .set({
+        isVerified: true,
+        verifiedAt: now,
+        verificationToken: null,
+        verificationTokenExpiry: null,
+      })
+      .where(eq(users.id, user.id));
+
+    return true;
+  }
+
+  async isUserVerified(userId: string): Promise<boolean> {
+    const [user] = await db
+      .select({ isVerified: users.isVerified })
+      .from(users)
+      .where(eq(users.id, userId));
+    
+    return user?.isVerified || false;
   }
 
   async createComplaint(complaint: Omit<Complaint, "id" | "createdAt">): Promise<Complaint> {
