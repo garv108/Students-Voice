@@ -104,7 +104,7 @@ export function registerAuthRoutes(app: Express) {
           ? "Account created! Please check your email to verify your account."
           : "Account created! We couldn't send verification email. Please contact support.",
         requiresVerification: true,
-        userId: user.id, // Send userId for potential resend functionality
+        userId: user.id,
       });
 
     } catch (error) {
@@ -140,10 +140,6 @@ export function registerAuthRoutes(app: Express) {
           message: "Invalid or expired verification token. Please request a new one." 
         });
       }
-      
-      // Get user to send welcome email
-      // Note: We need to find user by token - we'll add a helper method later
-      // For now, just return success
       
       res.json({ 
         message: "Email verified successfully! You can now login.",
@@ -262,4 +258,26 @@ export function registerAuthRoutes(app: Express) {
     });
   });
 
+  // ========== TEMPORARY TEST ENDPOINT ==========
+  app.post("/api/auth/test-email", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email required" });
+      }
+
+      console.log("🧪 Test email to:", email);
+      const result = await sendVerificationEmail({
+        email,
+        name: "Test User",
+        verificationToken: "test-token-123",
+      });
+
+      console.log("📧 Test email result:", result);
+      res.json(result);
+    } catch (error) {
+      console.error("❌ Test email error:", error);
+      res.status(500).json({ error: String(error) });
+    }
+  });
 }

@@ -18,7 +18,7 @@ exports.userSessions = (0, pg_core_1.pgTable)("user_sessions", {
 });
 exports.userSessionsRelations = (0, drizzle_orm_1.relations)(exports.userSessions, ({ one }) => ({
     user: one(exports.users, {
-        fields: [exports.userSessions.sid], // Note: Using sid since no user_id column
+        fields: [exports.userSessions.sid],
         references: [exports.users.id],
     }),
 }));
@@ -62,6 +62,11 @@ exports.users = (0, pg_core_1.pgTable)("users", {
     role: (0, exports.roleEnum)("role").notNull().default("student"),
     bannedUntil: (0, pg_core_1.timestamp)("banned_until"),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
+    // ✅ NEW FIELDS FOR EMAIL VERIFICATION
+    isVerified: (0, pg_core_1.boolean)("is_verified").notNull().default(false),
+    verificationToken: (0, pg_core_1.text)("verification_token"),
+    verificationTokenExpiry: (0, pg_core_1.timestamp)("verification_token_expiry"),
+    verifiedAt: (0, pg_core_1.timestamp)("verified_at"),
 });
 // ✅ NEW: relations for collegeSettings and templates
 exports.collegeSettingsRelations = (0, drizzle_orm_1.relations)(exports.collegeSettings, ({ one }) => ({
@@ -193,9 +198,9 @@ exports.notesFiles = (0, pg_core_1.pgTable)("notes_files", {
     categoryId: (0, pg_core_1.varchar)("category_id").notNull().references(() => exports.notesCategories.id, { onDelete: "cascade" }),
     title: (0, pg_core_1.text)("title").notNull(),
     description: (0, pg_core_1.text)("description"),
-    fileUrl: (0, pg_core_1.text)("file_url").notNull(), // Supabase URL
-    price: (0, pg_core_1.integer)("price").notNull(), // Price in rupees
-    isFree: (0, pg_core_1.boolean)("is_free").notNull().default(false), // Semester 1 files are free
+    fileUrl: (0, pg_core_1.text)("file_url").notNull(),
+    price: (0, pg_core_1.integer)("price").notNull(),
+    isFree: (0, pg_core_1.boolean)("is_free").notNull().default(false),
     uploadedBy: (0, pg_core_1.varchar)("uploaded_by").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
 });
@@ -214,9 +219,9 @@ exports.notesPurchases = (0, pg_core_1.pgTable)("notes_purchases", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     fileId: (0, pg_core_1.varchar)("file_id").notNull().references(() => exports.notesFiles.id, { onDelete: "cascade" }),
     buyerId: (0, pg_core_1.varchar)("buyer_id").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
-    paymentProof: (0, pg_core_1.text)("payment_proof").notNull(), // Screenshot URL
+    paymentProof: (0, pg_core_1.text)("payment_proof").notNull(),
     paymentStatus: (0, exports.paymentStatusEnum)("payment_status").notNull().default("pending"),
-    verifiedBy: (0, pg_core_1.varchar)("verified_by").references(() => exports.users.id), // Admin who verified
+    verifiedBy: (0, pg_core_1.varchar)("verified_by").references(() => exports.users.id),
     verifiedAt: (0, pg_core_1.timestamp)("verified_at"),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
 });
@@ -239,9 +244,9 @@ exports.notesBundles = (0, pg_core_1.pgTable)("notes_bundles", {
     categoryId: (0, pg_core_1.varchar)("category_id").notNull().references(() => exports.notesCategories.id, { onDelete: "cascade" }),
     name: (0, pg_core_1.text)("name").notNull(),
     description: (0, pg_core_1.text)("description"),
-    price: (0, pg_core_1.integer)("price").notNull(), // Discounted bundle price
+    price: (0, pg_core_1.integer)("price").notNull(),
     discountPercentage: (0, pg_core_1.integer)("discount_percentage").notNull(),
-    fileIds: (0, pg_core_1.text)("file_ids").array().notNull(), // Array of file IDs in this bundle
+    fileIds: (0, pg_core_1.text)("file_ids").array().notNull(),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
 });
 exports.notesBundlesRelations = (0, drizzle_orm_1.relations)(exports.notesBundles, ({ one, many }) => ({
@@ -255,9 +260,9 @@ exports.bundlePurchases = (0, pg_core_1.pgTable)("bundle_purchases", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     bundleId: (0, pg_core_1.varchar)("bundle_id").notNull().references(() => exports.notesBundles.id, { onDelete: "cascade" }),
     buyerId: (0, pg_core_1.varchar)("buyer_id").notNull().references(() => exports.users.id, { onDelete: "cascade" }),
-    paymentProof: (0, pg_core_1.text)("payment_proof").notNull(), // Screenshot URL
+    paymentProof: (0, pg_core_1.text)("payment_proof").notNull(),
     paymentStatus: (0, exports.paymentStatusEnum)("payment_status").notNull().default("pending"),
-    verifiedBy: (0, pg_core_1.varchar)("verified_by").references(() => exports.users.id), // Admin who verified
+    verifiedBy: (0, pg_core_1.varchar)("verified_by").references(() => exports.users.id),
     verifiedAt: (0, pg_core_1.timestamp)("verified_at"),
     createdAt: (0, pg_core_1.timestamp)("created_at").notNull().defaultNow(),
 });
@@ -284,7 +289,7 @@ exports.insertUserSchema = zod_1.z.object({
     rollNumber: zod_1.z.string().optional(),
     semester: zod_1.z.number().optional(),
     college: zod_1.z.string().optional(),
-    collegeId: zod_1.z.string().optional(), // ✅ FIX
+    collegeId: zod_1.z.string().optional(),
     userType: zod_1.z.string().optional(),
     password: zod_1.z.string().min(6, "Password must be at least 6 characters"),
 });

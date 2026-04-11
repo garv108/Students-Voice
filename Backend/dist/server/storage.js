@@ -31,7 +31,6 @@ class DatabaseStorage {
         return user || undefined;
     }
     async createUser(insertUser) {
-        // password already hashed in routes.ts
         const [user] = await db_1.db
             .insert(schema_1.users)
             .values(insertUser)
@@ -53,6 +52,42 @@ class DatabaseStorage {
     }
     async getAllUsers() {
         return db_1.db.select().from(schema_1.users).orderBy((0, drizzle_orm_1.desc)(schema_1.users.createdAt));
+    }
+    // ✅ NEW VERIFICATION METHODS
+    async setVerificationToken(userId, token, expiry) {
+        await db_1.db
+            .update(schema_1.users)
+            .set({
+            verificationToken: token,
+            verificationTokenExpiry: expiry,
+        })
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId));
+    }
+    async verifyUser(token) {
+        const now = new Date();
+        const [user] = await db_1.db
+            .select()
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.verificationToken, token), (0, drizzle_orm_1.sql) `${schema_1.users.verificationTokenExpiry} > ${now}`));
+        if (!user)
+            return false;
+        await db_1.db
+            .update(schema_1.users)
+            .set({
+            isVerified: true,
+            verifiedAt: now,
+            verificationToken: null,
+            verificationTokenExpiry: null,
+        })
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, user.id));
+        return true;
+    }
+    async isUserVerified(userId) {
+        const [user] = await db_1.db
+            .select({ isVerified: schema_1.users.isVerified })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId));
+        return user?.isVerified || false;
     }
     async createComplaint(complaint) {
         const [created] = await db_1.db.insert(schema_1.complaints).values(complaint).returning();
