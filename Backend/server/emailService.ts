@@ -1,4 +1,31 @@
-﻿import { Resend } from 'resend';
+﻿// RESEND: disabled for MVP – all email functions are stubbed out
+// The original Resend code remains commented below for future re-enablement.
+
+export async function sendVerificationEmail() {
+  // No operation
+  return { success: false, error: "Email service disabled" };
+}
+
+export async function sendWelcomeEmail() {
+  return { success: false, error: "Email service disabled" };
+}
+
+export async function sendPasswordResetEmail() {
+  return { success: false, error: "Email service disabled" };
+}
+
+export async function testEmailService() {
+  return { success: false, error: "Email service disabled" };
+}
+
+/*
+// Original Resend code (commented out)
+import { Resend } from 'resend';
+const resend = new Resend(process.env.RESEND_API_KEY);
+... (rest of original code)
+*/
+
+/*import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -60,7 +87,7 @@ export async function sendVerificationEmail({
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Verify Your Email</title>
       <style>
-        /* Your improved styles from version 1 */
+        /* Your improved styles from version 1 
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; }
         .header { background: #4f46e5; color: white; padding: 20px; text-align: center; }
@@ -186,4 +213,4 @@ export async function testEmailService(to: string = 'test@example.com'): Promise
   }
   
   return result;
-}
+}*/
