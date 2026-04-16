@@ -104,34 +104,34 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // ========== LOGIN (email/password) ==========
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { username, password } = req.body;
-      if (!username || !password) {
-        return res.status(400).json({ message: "Email and password required" });
-      }
-
-      // Find user by email (treat username as email)
-      const user = await storage.getUserByEmail(username);
-      if (!user) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-
-      const isValid = await comparePasswords(password, user.password);
-      if (!isValid) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-
-      (req as any).session.userId = user.id;
-
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ message: "Login failed" });
+ // ========== LOGIN (username/password) ==========
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username and password required" });
     }
-  });
+
+    // Find user by username
+    const user = await storage.getUserByUsername(username);
+    if (!user) {
+      return res.status(401).json({ message: "Invalid username or password" });
+    }
+
+    const isValid = await comparePasswords(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ message: "Invalid username or password" });
+    }
+
+    (req as any).session.userId = user.id;
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ message: "Login failed" });
+  }
+});
 
   // ========== LOGOUT ==========
   app.post("/api/auth/logout", (req, res) => {

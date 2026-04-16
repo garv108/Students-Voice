@@ -10,7 +10,7 @@ export default function Login() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      await login(username, password);
       setLocation("/dashboard");
     } catch (err: any) {
       setError(err.message || "Login failed");
@@ -80,7 +80,7 @@ export default function Login() {
           <Card className="border-slate-200 shadow-lg">
             <CardHeader className="text-center">
               <CardTitle className="text-2xl text-slate-800">Welcome back</CardTitle>
-              <CardDescription className="text-slate-500">Enter your credentials to access your account</CardDescription>
+              <CardDescription className="text-slate-500">Enter your username and password to access your account</CardDescription>
             </CardHeader>
             <CardContent>
               {error && (
@@ -91,12 +91,12 @@ export default function Login() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Email</label>
+                  <label className="text-sm font-medium text-slate-700">Username</label>
                   <Input
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text"
+                    placeholder="Enter your username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     required
                     className="border-slate-200 focus:ring-emerald-500 focus:border-emerald-500"
                   />
