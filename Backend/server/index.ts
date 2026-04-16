@@ -17,7 +17,7 @@ import { promisify } from "util";
 
 // ========== EARLY DEBUG ==========
 console.log("🔴 EARLY DEBUG: Server starting");
-console.log("File version: 2026-02-25-cors-fix");
+console.log("File version: 2026-04-16-cors-final");
 console.log("Current time:", new Date().toISOString());
 // ========== END EARLY DEBUG ==========
 
@@ -47,40 +47,45 @@ if (!sessionSecret && process.env.NODE_ENV === "production") {
 const app = express();
 app.set("trust proxy", 1);
 
-// CORS: allow localhost + any students-voice Vercel deployment (preview URLs change every push)
-function isAllowedOrigin(origin: string): boolean {
-  if (origin === "http://localhost:5173") return true;
-  if (origin === "http://localhost:3000") return true;
-  // Allow the stable production Vercel URL
-  if (origin === "https://students-voice-bay.vercel.app") return true;
-  // Allow ALL Vercel preview deployments for this project (pattern match)
-  if (/^https:\/\/students-voice(-[a-z0-9]+)*(-garvs-projects-[a-z0-9]+)?\.vercel\.app$/.test(origin)) return true;
-  return false;
-}
+// ========== CORS CONFIGURATION (FIXED) ==========
+const allowedOrigins = [
+  "https://students-voice-bay.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
+// Also allow any Vercel preview deployment (pattern match)
+const isVercelPreview = (origin: string): boolean => {
+  return /^https:\/\/students-voice(-[a-z0-9]+)*(-garvs-projects-[a-z0-9]+)?\.vercel\.app$/.test(origin);
+};
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (curl, Postman, server-to-server)
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
       if (!origin) {
         return callback(null, true);
       }
-      if (isAllowedOrigin(origin)) {
+      if (allowedOrigins.includes(origin) || isVercelPreview(origin)) {
         console.log(`✅ CORS allowed: ${origin}`);
-        callback(null, true);
-      } else {
-        console.warn(`❌ CORS blocked: ${origin}`);
-        callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+        return callback(null, true);
       }
+      console.warn(`❌ CORS blocked: ${origin}`);
+      callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["Set-Cookie"],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   })
 );
 
-// Security middleware
+// Handle preflight requests explicitly (optional, but safe)
+app.options("*", cors());
+
+// Security middleware (helmet)
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -90,7 +95,7 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "https:", "http:"],
-        connectSrc: ["'self'", "https://*.vercel.app", "http://localhost:5173"],
+        connectSrc: ["'self'", "https://*.vercel.app", "http://localhost:5173", "https://student-complaint-backend.onrender.com"],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
