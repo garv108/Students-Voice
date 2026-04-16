@@ -18,7 +18,7 @@
   calculateUrgency,
 } from "../shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, gte, count } from "drizzle-orm";
+import { eq, and, desc, sql, count } from "drizzle-orm";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
@@ -45,8 +45,8 @@ export interface IStorage {
   updateUserBan(userId: string, bannedUntil: Date | null): Promise<void>;
   updateUserRole(userId: string, role: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
+  updateUser(userId: string, updates: Partial<User>): Promise<User | undefined>; // NEW
   
-  // ✅ NEW VERIFICATION METHODS
   setVerificationToken(userId: string, token: string, expiry: Date): Promise<void>;
   verifyUser(token: string): Promise<boolean>;
   isUserVerified(userId: string): Promise<boolean>;
@@ -131,7 +131,16 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).orderBy(desc(users.createdAt));
   }
 
-  // ✅ NEW VERIFICATION METHODS
+  // NEW: update any fields of a user
+  async updateUser(userId: string, updates: Partial<User>): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
   async setVerificationToken(userId: string, token: string, expiry: Date): Promise<void> {
     await db
       .update(users)
@@ -153,9 +162,7 @@ export class DatabaseStorage implements IStorage {
           sql`${users.verificationTokenExpiry} > ${now}`
         )
       );
-
     if (!user) return false;
-
     await db
       .update(users)
       .set({
@@ -165,7 +172,6 @@ export class DatabaseStorage implements IStorage {
         verificationTokenExpiry: null,
       })
       .where(eq(users.id, user.id));
-
     return true;
   }
 
@@ -174,7 +180,6 @@ export class DatabaseStorage implements IStorage {
       .select({ isVerified: users.isVerified })
       .from(users)
       .where(eq(users.id, userId));
-    
     return user?.isVerified || false;
   }
 
@@ -200,7 +205,6 @@ export class DatabaseStorage implements IStorage {
         .where(eq(complaints.collegeId, collegeId))
         .orderBy(desc(complaints.likesCount));
     }
-
     return db
       .select()
       .from(complaints)
@@ -227,11 +231,9 @@ export class DatabaseStorage implements IStorage {
   async deleteComplaint(id: string): Promise<void> {
     const complaint = await this.getComplaint(id);
     const clusterId = complaint?.clusterId;
-    
     await db.delete(likes).where(eq(likes.complaintId, id));
     await db.delete(reactions).where(eq(reactions.complaintId, id));
     await db.delete(complaints).where(eq(complaints.id, id));
-    
     if (clusterId) {
       await this.updateClusterCount(clusterId);
     }
@@ -239,7 +241,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteComplaintsBulk(ids: string[]): Promise<void> {
     const clusterIds = new Set<string>();
-    
     for (const id of ids) {
       const complaint = await this.getComplaint(id);
       if (complaint?.clusterId) {
@@ -249,7 +250,6 @@ export class DatabaseStorage implements IStorage {
       await db.delete(reactions).where(eq(reactions.complaintId, id));
       await db.delete(complaints).where(eq(complaints.id, id));
     }
-    
     for (const clusterId of Array.from(clusterIds)) {
       await this.updateClusterCount(clusterId);
     }
@@ -257,7 +257,6 @@ export class DatabaseStorage implements IStorage {
 
   async addLike(complaintId: string, userId: string, isLike: boolean): Promise<void> {
     const existing = await this.getUserLike(complaintId, userId);
-    
     if (existing) {
       if (existing.isLike === isLike) {
         await db.delete(likes).where(eq(likes.id, existing.id));
@@ -311,7 +310,6 @@ export class DatabaseStorage implements IStorage {
           eq(reactions.emoji, emoji)
         )
       );
-    
     if (existing.length > 0) {
       await db.delete(reactions).where(eq(reactions.id, existing[0].id));
     } else {
@@ -340,7 +338,6 @@ export class DatabaseStorage implements IStorage {
       .from(reactions)
       .where(eq(reactions.complaintId, complaintId))
       .groupBy(reactions.emoji);
-    
     return result.map((r: any) => ({ emoji: r.emoji, count: Number(r.count) }));
   }
 
@@ -349,7 +346,6 @@ export class DatabaseStorage implements IStorage {
       .select({ emoji: reactions.emoji })
       .from(reactions)
       .where(and(eq(reactions.complaintId, complaintId), eq(reactions.userId, userId)));
-    
     return result.map((r: any) => r.emoji);
   }
 
@@ -364,9 +360,7 @@ export class DatabaseStorage implements IStorage {
 
   async getOrCreateCluster(keywords: string[]): Promise<ClusterGroup | null> {
     if (!keywords || keywords.length === 0) return null;
-
     const existingClusters = await db.select().from(clusterGroups);
-    
     for (const cluster of existingClusters) {
       if (cluster.keywords) {
         const clusterKeywords = cluster.keywords;
@@ -376,7 +370,6 @@ export class DatabaseStorage implements IStorage {
         }
       }
     }
-
     const [newCluster] = await db
       .insert(clusterGroups)
       .values({
@@ -385,19 +378,16 @@ export class DatabaseStorage implements IStorage {
         urgency: "normal",
       })
       .returning();
-    
     return newCluster;
   }
 
   private calculateKeywordOverlap(keywords1: string[], keywords2: string[]): number {
     const set1 = new Set(keywords1.map(k => k.toLowerCase()));
     const set2 = new Set(keywords2.map(k => k.toLowerCase()));
-    
     let overlap = 0;
     for (const keyword of Array.from(set1)) {
       if (set2.has(keyword)) overlap++;
     }
-    
     const totalUnique = new Set([...Array.from(set1), ...Array.from(set2)]).size;
     return totalUnique > 0 ? overlap / totalUnique : 0;
   }
@@ -407,15 +397,12 @@ export class DatabaseStorage implements IStorage {
       .select({ count: count() })
       .from(complaints)
       .where(and(eq(complaints.clusterId, clusterId), eq(complaints.solved, false)));
-    
     const activeCount = Number(activeComplaintsInCluster[0]?.count || 0);
     const urgency = calculateUrgency(activeCount);
-
     await db
       .update(clusterGroups)
       .set({ problemCount: activeCount, urgency, lastUpdated: new Date() })
       .where(eq(clusterGroups.id, clusterId));
-
     await db
       .update(complaints)
       .set({ similarComplaintsCount: activeCount, urgency })
@@ -448,7 +435,6 @@ export class DatabaseStorage implements IStorage {
       const allUsers = await db.select().from(users);
       const allAbuseLogs = await db.select().from(abuseLogs);
       const now = new Date();
-
       return {
         totalComplaints: complaintsFiltered.length,
         pendingComplaints: complaintsFiltered.filter((c: any) => c.status === "pending").length,
@@ -461,12 +447,10 @@ export class DatabaseStorage implements IStorage {
         abuseLogs: allAbuseLogs.length,
       };
     }
-
     const allComplaints = await db.select().from(complaints);
     const allUsers = await db.select().from(users);
     const allAbuseLogs = await db.select().from(abuseLogs);
     const now = new Date();
-
     return {
       totalComplaints: allComplaints.length,
       pendingComplaints: allComplaints.filter((c: any) => c.status === "pending").length,
@@ -485,13 +469,11 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(collegeSettings)
       .where(eq(collegeSettings.collegeId, collegeId));
-
     return result[0] ?? null;
   }
 
   async setCollegeSettings(collegeId: string, data: any) {
     const existing = await this.getCollegeSettings(collegeId);
-
     if (existing) {
       await db
         .update(collegeSettings)

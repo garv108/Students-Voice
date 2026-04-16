@@ -8,6 +8,83 @@ import { z } from "zod";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import { db } from "./db";
+import { users } from "../shared/schema";
+import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import { registerAuthRoutes } from "./routes/auth";
+import { registerCollegeRoutes } from "./routes/colleges";
+import { registerComplaintRoutes } from "./routes/complaints";
+import { registerAdminRoutes } from "./routes/admin";
+import { registerSettingsRoutes } from "./routes/settings";
+
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
+
+async function comparePasswords(supplied: string, stored: string): Promise<boolean> {
+  const [hashedPassword, salt] = stored.split(".");
+  const buf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  return buf.toString("hex") === hashedPassword;
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!(req as any).session.userId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  next();
+}
+
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!(req as any).session.userId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const user = await storage.getUser((req as any).session.userId);
+  if (!user || (user.role !== "admin" && user.role !== "moderator")) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+}
+
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
+
+  registerAuthRoutes(app);
+  registerCollegeRoutes(app);
+  registerComplaintRoutes(app);
+  registerAdminRoutes(app);
+  registerSettingsRoutes(app);
+
+  app.get("/admin/clear-ban", async (_req, res) => {
+    try {
+      await db.execute(sql`UPDATE users SET banned_until = NULL`);
+      res.json({ message: "All bans cleared" });
+    } catch (err) {
+      console.error("Clear ban error:", err);
+      res.status(500).json({ error: "Failed" });
+    }
+  });
+
+  // All notes marketplace routes have been removed.
+
+  return httpServer;
+}
+/*
+import type { Express, Request, Response, NextFunction } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { detectProfanity, getBanExpiration } from "./profanity";
+import { analyzeComplaint } from "./gemini";
+import { insertUserSchema, loginSchema, insertComplaintSchema } from "../shared/schema";
+import { z } from "zod";
+import { scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
+import { db } from "./db";
 import { users, notesCategories, notesFiles, notesBundles, notesPurchases } from "../shared/schema";
 import { eq, and } from "drizzle-orm";
 import { uploadFile, getSignedUrl, deleteFile } from "./notes-storage";
@@ -75,15 +152,15 @@ registerSettingsRoutes(app);
   });
 
 
-  /* ================= AUTH =====transfered to routes============ */
+   ================= AUTH =====transfered to routes============ 
 
-  /* ================= COLLEGES =====transfered to routes============ */
+   ================= COLLEGES =====transfered to routes============
 
-  /* ================= COMPLAINTS ================= */
+   ================= COMPLAINTS ================= 
 
-  /* ================= ADMIN ================= */
+   ================= ADMIN ================= 
 
-  /* ================= EDUNOTES ================= */
+   ================= EDUNOTES ================= 
 
   app.get("/api/notes/categories", async (req, res) => {
     try {
@@ -272,4 +349,4 @@ registerSettingsRoutes(app);
   });
 
   return httpServer;
-}
+}*/

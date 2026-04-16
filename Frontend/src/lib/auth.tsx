@@ -5,6 +5,14 @@ interface User {
   username: string;
   email: string;
   role: string;
+  name?: string;           // full name
+  onboardingCompleted?: boolean;
+  mobile?: string;
+  semester?: number;
+  course?: string;
+  branch?: string;
+  rollNumber?: string;
+  collegeId?: string;
 }
 
 interface SignupData {
