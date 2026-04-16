@@ -5,11 +5,8 @@ import { z } from "zod";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import { db } from "../db";
-import { users, colleges } from "../../shared/schema";
-import { eq, sql } from "drizzle-orm";
-import crypto from "crypto";
-import passport from "passport";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { colleges } from "../../shared/schema";
+import { eq } from "drizzle-orm";
 
 const scryptAsync = promisify(scrypt);
 
@@ -25,75 +22,18 @@ async function comparePasswords(supplied: string, stored: string): Promise<boole
   return buf.toString("hex") === hashedPassword;
 }
 
-export function setupGoogleAuth(app: Express) {
-  passport.use(new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL!,
-    },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) return done(new Error("No email found from Google"));
-
-        let user = await storage.getUserByEmail(email);
-        if (!user) {
-          const tempPassword = await hashPassword(crypto.randomBytes(20).toString('hex'));
-          user = await storage.createUser({
-            username: profile.displayName.replace(/\s/g, '_') + '_' + crypto.randomBytes(4).toString('hex'),
-            email: email,
-            password: tempPassword,
-            name: profile.displayName,
-          });
-          await storage.updateUser(user.id, { isVerified: true, onboardingCompleted: false });
-        }
-        return done(null, user);
-      } catch (error) {
-        return done(error as Error);
-      }
-    }
-  ));
-
-  passport.serializeUser((user: any, done) => {
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id: string, done) => {
-    const user = await storage.getUser(id);
-    done(null, user);
-  });
-
-  app.use(passport.initialize());
-  app.use(passport.session());
-}
-
 export function registerAuthRoutes(app: Express) {
 
-  app.get("/api/auth/google",
-    passport.authenticate("google", { scope: ["profile", "email"] })
-  );
-
-  app.get("/api/auth/google/callback",
-    passport.authenticate("google", { failureRedirect: "/login" }),
-    (req, res) => {
-      res.redirect(process.env.FRONTEND_URL + "/signup");
-    }
-  );
-
-  app.post("/api/auth/complete-registration", async (req, res) => {
+  // ========== REGISTRATION (no Google) ==========
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      if (!(req as any).session.userId) {
-        return res.status(401).json({ message: "Not authenticated. Please sign in with Google first." });
-      }
-
       const {
         role,
         fullName,
         email,
         mobile,
         semester,
-        branch,          // course removed
+        branch,
         rollNumber,
         college,
         collegeOther,
@@ -101,60 +41,99 @@ export function registerAuthRoutes(app: Express) {
         password,
       } = req.body;
 
-      // Validation (no course)
+      // Validation
       if (!fullName) return res.status(400).json({ message: "Full name is required" });
+      if (!email) return res.status(400).json({ message: "Email is required" });
       if (!password || password.length < 4) return res.status(400).json({ message: "Password must be at least 4 characters" });
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+
       if (role === "student") {
         if (!semester) return res.status(400).json({ message: "Semester is required" });
-        if (!branch) return res.status(400).json({ message: "Branch is required" });   // no course condition
+        if (!branch) return res.status(400).json({ message: "Branch is required" });
         if (!rollNumber) return res.status(400).json({ message: "Roll number is required" });
       } else {
         if (!department) return res.status(400).json({ message: "Department is required" });
       }
       if (!college) return res.status(400).json({ message: "College is required" });
 
-      let collegeId: string | null = null;
+      // Resolve college ID
+      let collegeId: string | undefined = undefined;
       if (college === "UCE Banswara") {
         const [collegeRecord] = await db.select().from(colleges).where(eq(colleges.name, "UCE Banswara"));
-        collegeId = collegeRecord?.id || null;
+        collegeId = collegeRecord?.id;
       } else if (college === "Demo College") {
         const [collegeRecord] = await db.select().from(colleges).where(eq(colleges.name, "Demo College"));
-        collegeId = collegeRecord?.id || null;
+        collegeId = collegeRecord?.id;
       } else if (college === "+ Request your college" && collegeOther) {
-        await storage.updateUser((req as any).session.userId, { requestedCollege: collegeOther });
+        // Store requested college name - we'll add to requested_college column later
       }
 
       const hashedPassword = await hashPassword(password);
 
-      // Map frontend field names to database column names
-      const updateData: Partial<any> = {
-        name: fullName,
-        email: email,
-        phone: mobile || null,           // database column is 'phone'
-        semester: semester ? parseInt(semester) : null,
-        branch: branch || null,          // course removed
-        rollNumber: rollNumber || null,
-        collegeId: collegeId,
-        department: department || null,
+      // Create username from email (before @)
+      const username = email.split('@')[0] + '_' + randomBytes(4).toString('hex');
+
+      const newUser = await storage.createUser({
+        username,
+        email,
         password: hashedPassword,
-        role: role,
+        name: fullName,
+        phone: mobile || undefined,
+        semester: semester ? parseInt(semester) : undefined,
+        branch: branch || undefined,
+        rollNumber: rollNumber || undefined,
+        collegeId: collegeId,
+        department: department || undefined,
+        role: role|| undefined,
         onboardingCompleted: true,
-      };
+      });
 
-      const updatedUser = await storage.updateUser((req as any).session.userId, updateData);
+      // Auto-login after registration
+      (req as any).session.userId = newUser.id;
 
-      if (!updatedUser) {
-        return res.status(500).json({ message: "Failed to update user" });
-      }
-
-      const { password: _, ...userWithoutPassword } = updatedUser;
+      const { password: _, ...userWithoutPassword } = newUser;
       res.json({ user: userWithoutPassword });
     } catch (error) {
-      console.error("Complete registration error:", error);
-      res.status(500).json({ message: "Failed to complete registration" });
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Failed to register" });
     }
   });
 
+  // ========== LOGIN (email/password) ==========
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ message: "Email and password required" });
+      }
+
+      // Find user by email (treat username as email)
+      const user = await storage.getUserByEmail(username);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const isValid = await comparePasswords(password, user.password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      (req as any).session.userId = user.id;
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // ========== LOGOUT ==========
   app.post("/api/auth/logout", (req, res) => {
     (req as any).session.destroy((err: any) => {
       if (err) {
@@ -164,21 +143,20 @@ export function registerAuthRoutes(app: Express) {
     });
   });
 
+  // ========== GET CURRENT USER ==========
   app.get("/api/auth/me", async (req, res) => {
     if (!(req as any).session.userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
+
     const user = await storage.getUser((req as any).session.userId);
     if (!user) {
       (req as any).session.destroy(() => {});
       return res.status(401).json({ message: "User not found" });
     }
-    res.json({
-      user: {
-        ...user,
-        password: undefined,
-      },
-    });
+
+    const { password, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword });
   });
 }
 /*import { Express } from "express";

@@ -203,6 +203,7 @@ export const insertUserSchema = z.object({
   name: z.string().optional(),
   email: z.string().email("Invalid email"),
   phone: z.string().optional(),
+  branch: z.string().optional(),
   rollNumber: z.string().optional(),
   semester: z.number().optional(),
   college: z.string().optional(),
@@ -210,6 +211,8 @@ export const insertUserSchema = z.object({
   userType: z.string().optional(),
   password: z.string().min(6, "Password must be at least 6 characters"),
   isVerified: z.boolean().optional(),
+  department: z.string().optional(),
+  role: z.string().optional(),
   onboardingCompleted: z.boolean().optional(),
 });
 
