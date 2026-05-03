@@ -78,7 +78,7 @@ const colleges = ["UCE Banswara", "Demo College", "+ Request your college"]
 const API_BASE = import.meta.env.VITE_API_URL || ""
 
 export default function Signup() {
-  const { login } = useAuth()
+  const { signup } = useAuth()
   const [, setLocation] = useLocation()
   const [role, setRole] = useState<Role>("student")
   const [formData, setFormData] = useState<FormData>(initialFormData)
@@ -145,33 +145,45 @@ export default function Signup() {
 
     try {
       const payload = {
-        role,
-        fullName: formData.fullName,
+        // Dummy username (backend will override it)
+        username:
+          formData.email.split("@")[0] +
+          "_" +
+          Math.random().toString(36).substring(2, 6),
         email: formData.email,
-        mobile: formData.mobile,
-        semester: formData.semester ? parseInt(formData.semester) : null,
-        branch: formData.branch === "Other" ? formData.branchOther : formData.branch,
-        rollNumber: formData.rollNumber,
-        college: formData.college,
-        collegeOther: formData.collegeOther,
-        department: formData.department,
         password: formData.password,
+        name: formData.fullName,
+        phone: formData.mobile,
+        rollNumber: formData.rollNumber,
+        semester: formData.semester ? parseInt(formData.semester) : undefined,
+        college: formData.college,
+        collegeId: undefined,
+        role: role,
+
+        // ✅ Restored missing fields
+        branch:
+          formData.branch === "Other"
+            ? formData.branchOther
+            : formData.branch,
+        collegeOther:
+          formData.college === "+ Request your college"
+            ? formData.collegeOther
+            : undefined,
+        department:
+          role === "admin" || role === "moderator"
+            ? formData.department
+            : undefined,
       }
 
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      })
+      await signup(payload)
 
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || "Registration failed")
+      // signup() already calls fetchUser() internally, so refreshUser is redundant.
+      // Keeping the line would not break anything, but it's unnecessary.
+      // await refreshUser();
 
-      // Auto-login after registration
-      await login(data.user.email, formData.password)
-
-      setToastMessage("Account created successfully! Redirecting to dashboard…")
+      setToastMessage(
+        "Account created successfully! Redirecting to dashboard…"
+      )
       setShowToast(true)
       setTimeout(() => {
         setLocation("/dashboard")
