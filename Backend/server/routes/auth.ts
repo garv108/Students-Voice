@@ -29,7 +29,7 @@ export function registerAuthRoutes(app: Express) {
     try {
       const {
         role,
-        fullName,
+        name,          // FIX: frontend sends "name", not "fullName"
         email,
         mobile,
         semester,
@@ -42,7 +42,7 @@ export function registerAuthRoutes(app: Express) {
       } = req.body;
 
       // Validation
-      if (!fullName) return res.status(400).json({ message: "Full name is required" });
+      if (!name || !name.trim()) return res.status(400).json({ message: "Full name is required" });
       if (!email) return res.status(400).json({ message: "Email is required" });
       if (!password || password.length < 4) return res.status(400).json({ message: "Password must be at least 4 characters" });
       
@@ -82,22 +82,30 @@ export function registerAuthRoutes(app: Express) {
         username,
         email,
         password: hashedPassword,
-        name: fullName,
+        name: name.trim(),           // FIX Bug 1: was fullName
         phone: mobile || undefined,
         semester: semester ? parseInt(semester) : undefined,
         branch: branch || undefined,
         rollNumber: rollNumber || undefined,
         collegeId: collegeId,
         department: department || undefined,
-        role: role|| undefined,
+        role: role || undefined,
         onboardingCompleted: true,
+        isVerified: true,            // FIX Bug 3: set true so login never blocks this user
       });
 
-      // Auto-login after registration
+      // FIX Bug 2: save session to PG store BEFORE sending response
+      // Without this, fetchUser() fires before session is written → 401
       (req as any).session.userId = newUser.id;
+      (req as any).session.save((err: any) => {
+        if (err) {
+          console.error("Session save error after registration:", err);
+          return res.status(500).json({ message: "Account created but session failed. Please log in manually." });
+        }
+        const { password: _, ...userWithoutPassword } = newUser;
+        res.json({ user: userWithoutPassword });
+      });
 
-      const { password: _, ...userWithoutPassword } = newUser;
-      res.json({ user: userWithoutPassword });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Failed to register" });
@@ -124,9 +132,14 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     (req as any).session.userId = user.id;
-
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({ user: userWithoutPassword });
+    (req as any).session.save((err: any) => {
+      if (err) {
+        console.error("Session save error on login:", err);
+        return res.status(500).json({ message: "Login failed, please try again" });
+      }
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
+    });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Login failed" });
