@@ -3,7 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { AuthProvider, useAuth } from "./lib/auth.tsx";
+import { AuthProvider, useAuth } from "./lib/auth";
 import SubmitAI from "./pages/submit-ai";
 
 // Pages
@@ -72,16 +72,23 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
       <Route path="/verify-email" component={VerifyEmail} />
+      
       <Route path="/dashboard">
-      <Route path="/submit-ai" component={SubmitAI} />
-      <ProtectedRoute component={Home} />
+        <ProtectedRoute component={Home} />
       </Route>
+      
+      <Route path="/submit-ai">
+        <ProtectedRoute component={SubmitAI} />
+      </Route>
+      
       <Route path="/submit">
         <ProtectedRoute component={Submit} />
       </Route>
+      
       <Route path="/admin">
         <AdminRoute component={Admin} />
       </Route>
+      
       <Route component={NotFound} />
     </Switch>
   );
@@ -104,7 +111,6 @@ function App() {
 }
 
 export default App;
-
 
 
 /*

@@ -16,8 +16,6 @@ import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import { registerAIChatRoutes } from "./routes/aiComplaints";
 
-
-
 // ========== EARLY DEBUG ==========
 console.log("🔴 EARLY DEBUG: Server starting");
 console.log("File version: 2026-04-16-cors-final");
