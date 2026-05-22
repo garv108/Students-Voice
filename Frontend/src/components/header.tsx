@@ -21,7 +21,7 @@ export function Header() {
 
   const navLinks = [
     { href: "/dashboard", label: "Leaderboard", icon: Home },
-    { href: "/submit", label: "Submit Problem", icon: Plus, requiresAuth: true },
+    { href: "/submit-ai", label: "Submit Problem", icon: Plus, requiresAuth: true }, // ← changed to /submit-ai
   ];
 
   const adminLinks = [
