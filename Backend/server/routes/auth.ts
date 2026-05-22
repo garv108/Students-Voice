@@ -29,7 +29,7 @@ export function registerAuthRoutes(app: Express) {
     try {
       const {
         role,
-        name,          // FIX: frontend sends "name", not "fullName"
+        name,          // FIX: frontend sends "name" not "fullName"
         email,
         mobile,
         semester,
@@ -82,20 +82,19 @@ export function registerAuthRoutes(app: Express) {
         username,
         email,
         password: hashedPassword,
-        name: name.trim(),           // FIX Bug 1: was fullName
+        name: name.trim(),           // FIX: was fullName
         phone: mobile || undefined,
         semester: semester ? parseInt(semester) : undefined,
         branch: branch || undefined,
         rollNumber: rollNumber || undefined,
         collegeId: collegeId,
         department: department || undefined,
-        role: role || undefined,
+        role: role|| undefined,
         onboardingCompleted: true,
-        isVerified: true,            // FIX Bug 3: set true so login never blocks this user
+        isVerified: true,            // FIX: set true so login never blocks new users
       });
 
-      // FIX Bug 2: save session to PG store BEFORE sending response
-      // Without this, fetchUser() fires before session is written → 401
+      // FIX: save session to PG store BEFORE responding — prevents race with fetchUser()
       (req as any).session.userId = newUser.id;
       (req as any).session.save((err: any) => {
         if (err) {
@@ -105,7 +104,6 @@ export function registerAuthRoutes(app: Express) {
         const { password: _, ...userWithoutPassword } = newUser;
         res.json({ user: userWithoutPassword });
       });
-
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Failed to register" });
@@ -120,8 +118,11 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ message: "Username and password required" });
     }
 
-    // Find user by username
-    const user = await storage.getUserByUsername(username);
+    // Find user by username OR email (registration auto-generates username so users log in with email)
+    let user = await storage.getUserByUsername(username);
+    if (!user) {
+      user = await storage.getUserByEmail(username);
+    }
     if (!user) {
       return res.status(401).json({ message: "Invalid username or password" });
     }

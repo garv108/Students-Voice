@@ -80,7 +80,7 @@ export default function Login() {
           <Card className="border-slate-200 shadow-lg">
             <CardHeader className="text-center">
               <CardTitle className="text-2xl text-slate-800">Welcome back</CardTitle>
-              <CardDescription className="text-slate-500">Enter your username and password to access your account</CardDescription>
+              <CardDescription className="text-slate-500">Enter your email and password to access your account</CardDescription>
             </CardHeader>
             <CardContent>
               {error && (
@@ -91,10 +91,10 @@ export default function Login() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Username</label>
+                  <label className="text-sm font-medium text-slate-700">Email or Username</label>
                   <Input
                     type="text"
-                    placeholder="Enter your username"
+                    placeholder="Enter your email or username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -124,9 +124,9 @@ export default function Login() {
                   </div>
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" 
+                <Button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   disabled={loading}
                 >
                   {loading ? "Logging in..." : "Login"}
