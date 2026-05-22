@@ -14,6 +14,9 @@ import { users } from "../shared/schema";
 import { eq } from "drizzle-orm";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
+import { registerAIChatRoutes } from "./routes/aiComplaints";
+
+
 
 // ========== EARLY DEBUG ==========
 console.log("🔴 EARLY DEBUG: Server starting");
@@ -339,3 +342,6 @@ httpServer.listen(PORT, () => {
   console.log(`🍪 Cookie secure: ${sessionConfig.cookie?.secure}`);
   console.log(`🍪 Cookie sameSite: ${sessionConfig.cookie?.sameSite}`);
 });
+
+// ... after other route registrations
+registerAIChatRoutes(app);

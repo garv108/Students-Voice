@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth.tsx";
+import SubmitAI from "./pages/submit-ai";
 
 // Pages
 import Landing from "./pages/landing";
@@ -72,7 +73,8 @@ function Router() {
       <Route path="/signup" component={Signup} />
       <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/dashboard">
-        <ProtectedRoute component={Home} />
+      <Route path="/submit-ai" component={SubmitAI} />
+      <ProtectedRoute component={Home} />
       </Route>
       <Route path="/submit">
         <ProtectedRoute component={Submit} />
@@ -102,6 +104,8 @@ function App() {
 }
 
 export default App;
+
+
 
 /*
 import { Switch, Route, Redirect } from "wouter";

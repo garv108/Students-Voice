@@ -1,10 +1,11 @@
-﻿import { sql, relations } from "drizzle-orm";
+﻿// Backend/shared/schema.ts
+import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, boolean, integer, timestamp, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const roleEnum = pgEnum("role", ["student", "moderator", "admin"]);
-export const statusEnum = pgEnum("status", ["pending", "in_progress", "solved"]);
+export const statusEnum = pgEnum("status", ["pending", "in_progress", "solved", "draft"]);  // ADDED "draft"
 export const urgencyEnum = pgEnum("urgency", ["normal", "urgent", "critical", "top_priority", "emergency"]);
 export const severityEnum = pgEnum("severity", ["good", "average", "poor", "bad", "worst", "critical"]);
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "verified", "rejected"]);
@@ -101,6 +102,7 @@ export const complaints = pgTable("complaints", {
   severity: severityEnum("severity").default("average"),
   keywords: text("keywords").array(),
   status: statusEnum("status").notNull().default("pending"),
+  category: text("category"),                                           // <-- ADDED
   solved: boolean("solved").notNull().default(false),
   solvedBy: varchar("solved_by").references(() => users.id),
   solvedAt: timestamp("solved_at"),
@@ -197,7 +199,7 @@ export const clusterGroupsRelations = relations(clusterGroups, ({ many }) => ({
   complaints: many(complaints),
 }));
 
-// Validation schemas
+// ----- Schemas -----
 export const insertUserSchema = z.object({
   username: z.string().min(1, "Username is required"),
   name: z.string().optional(),
@@ -229,8 +231,15 @@ export const resendVerificationSchema = z.object({
   email: z.string().email("Invalid email"),
 });
 
+// UPDATED: now accepts category, status, and description (fallback for originalText)
 export const insertComplaintSchema = z.object({
-  originalText: z.string().min(1, "Complaint text is required"),
+  originalText: z.string().optional(),                         // can be omitted if description is sent
+  description: z.string().optional(),                          // used by AI draft
+  category: z.string().optional(),
+  status: z.enum(["pending", "draft"]).optional().default("pending"),
+}).refine(data => data.originalText || data.description, {
+  message: "Complaint text is required",
+  path: ["originalText"],
 });
 
 export const insertReactionSchema = z.object({
@@ -273,7 +282,6 @@ export function calculateUrgency(count: number): typeof urgencyEnum.enumValues[n
   if (count >= 10) return "urgent";
   return "normal";
 }
-
 /* import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, boolean, integer, timestamp, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
