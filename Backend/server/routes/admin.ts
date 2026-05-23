@@ -93,27 +93,30 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // BAN USER
-  app.post("/api/admin/ban", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  // BAN USER (aligned with frontend)
+  app.put("/api/admin/users/:id/ban", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
-      const { userId, until } = req.body;
-      await storage.updateUserBan(userId, until);
+      const userId = req.params.id;
+      const { hours } = req.body;   // frontend sends { hours: 48 }
+      const hoursNum = parseInt(hours) || 48;
+      const banUntil = new Date(Date.now() + hoursNum * 60 * 60 * 1000);
+      await storage.updateUserBan(userId, banUntil);
       res.json({ success: true });
     } catch (error) {
       console.error("Ban error:", error);
-      res.status(500).json({ message: "Failed to ban" });
+      res.status(500).json({ message: "Failed to ban user" });
     }
   });
 
-  // UNBAN USER
-  app.post("/api/admin/unban", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  // UNBAN USER (aligned with frontend)
+  app.put("/api/admin/users/:id/unban", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
-      const { userId } = req.body;
+      const userId = req.params.id;
       await storage.updateUserBan(userId, null);
       res.json({ success: true });
     } catch (error) {
       console.error("Unban error:", error);
-      res.status(500).json({ message: "Failed" });
+      res.status(500).json({ message: "Failed to unban user" });
     }
   });
 
