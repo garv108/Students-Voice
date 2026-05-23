@@ -225,7 +225,7 @@ export function registerComplaintRoutes(app: Express) {
     requireCollege,
     async (req: CollegeRequest, res) => {
       try {
-        const id = (req as any).params.id;                     // FIXED: access params safely
+        const id = (req as any).params.id;
         const userId = (req as any).session.userId;
 
         const complaint = await storage.getComplaint(id);
@@ -251,7 +251,7 @@ export function registerComplaintRoutes(app: Express) {
     requireCollege,
     async (req: CollegeRequest, res) => {
       try {
-        const id = (req as any).params.id;                     // FIXED: access params safely
+        const id = (req as any).params.id;
         const user = req.user;
         if (!user || (user.role !== "admin" && user.role !== "moderator")) {
           return res.status(403).json({ message: "Only admins can permanently delete complaints" });
@@ -261,6 +261,70 @@ export function registerComplaintRoutes(app: Express) {
       } catch (error) {
         console.error("Delete error:", error);
         res.status(500).json({ message: "Failed" });
+      }
+    }
+  );
+
+  // ==================== NEW CHAT ENDPOINTS ====================
+
+  /* GET MESSAGES FOR A COMPLAINT (admin or complaint owner) */
+  app.get(
+    "/api/complaints/:id/messages",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const id = (req as any).params.id;
+        const userId = (req as any).session.userId;
+        const user = req.user;
+
+        const complaint = await storage.getComplaint(id);
+        if (!complaint) return res.status(404).json({ message: "Complaint not found" });
+
+        if (user?.role !== "admin" && user?.role !== "moderator" && complaint.userId !== userId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        const messages = await storage.getComplaintMessages(id);
+        res.json(messages);
+      } catch (error) {
+        console.error("Get messages error:", error);
+        res.status(500).json({ message: "Failed to load messages" });
+      }
+    }
+  );
+
+  /* SEND MESSAGE IN A COMPLAINT CHAT */
+  app.post(
+    "/api/complaints/:id/messages",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const id = (req as any).params.id;
+        const { message } = req.body;
+        const userId = (req as any).session.userId;
+        const user = req.user;
+
+        if (!message || !message.trim()) {
+          return res.status(400).json({ message: "Message cannot be empty" });
+        }
+
+        const complaint = await storage.getComplaint(id);
+        if (!complaint) return res.status(404).json({ message: "Complaint not found" });
+
+        if (user?.role !== "admin" && user?.role !== "moderator" && complaint.userId !== userId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        const newMessage = await storage.createComplaintMessage({
+          complaintId: id,
+          senderId: userId,
+          message: message.trim(),
+        });
+
+        res.json(newMessage);
+      } catch (error) {
+        console.error("Send message error:", error);
+        res.status(500).json({ message: "Failed to send message" });
       }
     }
   );

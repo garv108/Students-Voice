@@ -1,5 +1,4 @@
-﻿// Backend/shared/schema.ts
-import { sql, relations } from "drizzle-orm";
+﻿import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, boolean, integer, timestamp, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -90,6 +89,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   reactions: many(reactions),
   abuseLogs: many(abuseLogs),
   sessions: many(userSessions),
+  complaintMessages: many(complaintMessages),   // add this
 }));
 
 export const complaints = pgTable("complaints", {
@@ -102,7 +102,7 @@ export const complaints = pgTable("complaints", {
   severity: severityEnum("severity").default("average"),
   keywords: text("keywords").array(),
   status: statusEnum("status").notNull().default("pending"),
-  category: text("category"),                                           // <-- ADDED
+  category: text("category"),
   solved: boolean("solved").notNull().default(false),
   solvedBy: varchar("solved_by").references(() => users.id),
   solvedAt: timestamp("solved_at"),
@@ -127,6 +127,27 @@ export const complaintsRelations = relations(complaints, ({ one, many }) => ({
   cluster: one(clusterGroups, {
     fields: [complaints.clusterId],
     references: [clusterGroups.id],
+  }),
+  messages: many(complaintMessages),   // add this
+}));
+
+// NEW TABLE
+export const complaintMessages = pgTable("complaint_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  complaintId: varchar("complaint_id").notNull().references(() => complaints.id, { onDelete: "cascade" }),
+  senderId: varchar("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const complaintMessagesRelations = relations(complaintMessages, ({ one }) => ({
+  complaint: one(complaints, {
+    fields: [complaintMessages.complaintId],
+    references: [complaints.id],
+  }),
+  sender: one(users, {
+    fields: [complaintMessages.senderId],
+    references: [users.id],
   }),
 }));
 
@@ -231,10 +252,9 @@ export const resendVerificationSchema = z.object({
   email: z.string().email("Invalid email"),
 });
 
-// UPDATED: now accepts category, status, and description (fallback for originalText)
 export const insertComplaintSchema = z.object({
-  originalText: z.string().optional(),                         // can be omitted if description is sent
-  description: z.string().optional(),                          // used by AI draft
+  originalText: z.string().optional(),
+  description: z.string().optional(),
   category: z.string().optional(),
   status: z.enum(["pending", "draft"]).optional().default("pending"),
 }).refine(data => data.originalText || data.description, {
@@ -261,6 +281,8 @@ export type InsertReaction = z.infer<typeof insertReactionSchema>;
 export type Like = typeof likes.$inferSelect;
 export type AbuseLog = typeof abuseLogs.$inferSelect;
 export type ClusterGroup = typeof clusterGroups.$inferSelect;
+export type ComplaintMessage = typeof complaintMessages.$inferSelect;          // NEW
+export type InsertComplaintMessage = typeof complaintMessages.$inferInsert;    // NEW
 export type VerifyEmail = z.infer<typeof verifyEmailSchema>;
 export type ResendVerification = z.infer<typeof resendVerificationSchema>;
 

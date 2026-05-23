@@ -50,6 +50,7 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
+import { ComplaintChat } from "@/components/complaint-chat";  // NEW
 import {
   BarChart3,
   Users,
@@ -67,6 +68,7 @@ import {
   Siren,
   AlertCircle,
   Clock,
+  MessageCircle,  // NEW
 } from "lucide-react";
 import type { Complaint, User, AbuseLog } from "@shared/schema";
 
@@ -103,6 +105,7 @@ export default function Admin() {
   const [editUrgency, setEditUrgency] = useState<string>("normal");
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [chatComplaintId, setChatComplaintId] = useState<string | null>(null);  // NEW
 
   // Check authorization first
   useEffect(() => {
@@ -116,7 +119,6 @@ export default function Admin() {
       setIsAuthorized(hasAccess);
       
       if (!hasAccess) {
-        // Don't redirect immediately, show access denied message
         console.log("User not authorized for admin panel");
       }
     }
@@ -138,7 +140,7 @@ export default function Admin() {
     },
     enabled: !!currentUser && (currentUser?.role === "admin" || currentUser?.role === "moderator") && isAuthorized === true,
     retry: false,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
   });
 
   const editMutation = useMutation({
@@ -235,7 +237,6 @@ export default function Admin() {
     },
   });
 
-  
   // Handle loading state
   if (authLoading || isAuthorized === null) {
     return (
@@ -579,6 +580,14 @@ export default function Admin() {
                                   >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setChatComplaintId(complaint.id)}
+                                    title="Chat with student"
+                                  >
+                                    <MessageCircle className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -886,6 +895,14 @@ export default function Admin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Chat Panel */}
+      {chatComplaintId && (
+        <ComplaintChat
+          complaintId={chatComplaintId}
+          onClose={() => setChatComplaintId(null)}
+        />
+      )}
     </div>
   );
 }

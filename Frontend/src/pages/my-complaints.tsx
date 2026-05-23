@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import Footer from "@/components/footer";
@@ -9,11 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
+import { ComplaintChat } from "@/components/complaint-chat";   // NEW
 import {
   FileEdit,
   Plus,
   AlertTriangle,
   Archive,
+  MessageCircle,   // NEW
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -29,6 +32,7 @@ const statusTabs = [
 export default function MyComplaints() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [chatComplaintId, setChatComplaintId] = useState<string | null>(null);   // NEW
 
   const { data: complaints, isLoading, error } = useQuery<Complaint[]>({
     queryKey: ["/api/my-complaints"],
@@ -129,12 +133,21 @@ export default function MyComplaints() {
                           </p>
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
-                          {complaint.status === "draft" && (
+                          {complaint.status === "draft" ? (
                             <Link href="/submit-ai">
                               <Button variant="outline" size="sm" className="gap-1">
                                 <FileEdit className="h-4 w-4" /> Edit
                               </Button>
                             </Link>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => setChatComplaintId(complaint.id)}
+                            >
+                              <MessageCircle className="h-4 w-4" /> Chat
+                            </Button>
                           )}
                           {complaint.status !== "withdrawn" && (
                             <Button
@@ -174,6 +187,14 @@ export default function MyComplaints() {
         )}
       </main>
       <Footer />
+
+      {/* Chat Panel */}
+      {chatComplaintId && (
+        <ComplaintChat
+          complaintId={chatComplaintId}
+          onClose={() => setChatComplaintId(null)}
+        />
+      )}
     </div>
   );
 }

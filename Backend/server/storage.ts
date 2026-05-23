@@ -6,6 +6,7 @@
   abuseLogs,
   clusterGroups,
   collegeSettings,
+  complaintMessages,                  // <-- NEW
   type User,
   type InsertUser,
   type Complaint,
@@ -15,6 +16,8 @@
   type Like,
   type AbuseLog,
   type ClusterGroup,
+  type ComplaintMessage,              // <-- NEW
+  type InsertComplaintMessage,        // <-- NEW
   calculateUrgency,
 } from "../shared/schema";
 import { db } from "./db";
@@ -55,7 +58,7 @@ export interface IStorage {
   getComplaint(id: string): Promise<Complaint | undefined>;
   getComplaints(): Promise<Complaint[]>;
   getLeaderboardComplaints(collegeId?: string): Promise<Complaint[]>;
-  getUserComplaints(userId: string): Promise<Complaint[]>;  // NEW
+  getUserComplaints(userId: string): Promise<Complaint[]>;
   updateComplaint(id: string, updates: Partial<Complaint>): Promise<Complaint | undefined>;
   deleteComplaint(id: string): Promise<void>;
   deleteComplaintsBulk(ids: string[]): Promise<void>;
@@ -87,6 +90,10 @@ export interface IStorage {
     bannedUsers: number;
     abuseLogs: number;
   }>;
+
+  // NEW methods
+  getComplaintMessages(complaintId: string): Promise<ComplaintMessage[]>;
+  createComplaintMessage(msg: InsertComplaintMessage): Promise<ComplaintMessage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -197,7 +204,6 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(complaints).orderBy(desc(complaints.createdAt));
   }
 
-  // Leaderboard now excludes drafts and withdrawn complaints
   async getLeaderboardComplaints(collegeId?: string): Promise<Complaint[]> {
     if (collegeId) {
       return db
@@ -216,7 +222,6 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(complaints.likesCount));
   }
 
-  // NEW: return all complaints for a specific user (all statuses)
   async getUserComplaints(userId: string): Promise<Complaint[]> {
     return db
       .select()
@@ -247,6 +252,7 @@ export class DatabaseStorage implements IStorage {
     const clusterId = complaint?.clusterId;
     await db.delete(likes).where(eq(likes.complaintId, id));
     await db.delete(reactions).where(eq(reactions.complaintId, id));
+    await db.delete(complaintMessages).where(eq(complaintMessages.complaintId, id)); // NEW: delete messages
     await db.delete(complaints).where(eq(complaints.id, id));
     if (clusterId) {
       await this.updateClusterCount(clusterId);
@@ -262,6 +268,7 @@ export class DatabaseStorage implements IStorage {
       }
       await db.delete(likes).where(eq(likes.complaintId, id));
       await db.delete(reactions).where(eq(reactions.complaintId, id));
+      await db.delete(complaintMessages).where(eq(complaintMessages.complaintId, id)); // NEW
       await db.delete(complaints).where(eq(complaints.id, id));
     }
     for (const clusterId of Array.from(clusterIds)) {
@@ -499,6 +506,21 @@ export class DatabaseStorage implements IStorage {
         ...data,
       });
     }
+  }
+
+  // ===================== NEW METHODS =====================
+
+  async getComplaintMessages(complaintId: string): Promise<ComplaintMessage[]> {
+    return db
+      .select()
+      .from(complaintMessages)
+      .where(eq(complaintMessages.complaintId, complaintId))
+      .orderBy(complaintMessages.createdAt);
+  }
+
+  async createComplaintMessage(msg: InsertComplaintMessage): Promise<ComplaintMessage> {
+    const [created] = await db.insert(complaintMessages).values(msg).returning();
+    return created;
   }
 }
 
