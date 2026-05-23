@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Header } from "@/components/header";
-import { ComplaintCard } from "@/components/complaint-card";
 import { UrgencyBadge } from "@/components/urgency-badge";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -52,13 +51,11 @@ import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ComplaintChat } from "@/components/complaint-chat";
 import {
-  BarChart3,
   Users,
   AlertTriangle,
   Trash2,
   Pencil,
   CheckCircle,
-  Shield,
   ShieldAlert,
   UserX,
   Search,
@@ -69,7 +66,7 @@ import {
   AlertCircle,
   Clock,
   MessageCircle,
-  Loader2,   // <-- added
+  Loader2,
 } from "lucide-react";
 import type { Complaint, User, AbuseLog } from "@shared/schema";
 
@@ -107,6 +104,7 @@ export default function Admin() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [chatComplaintId, setChatComplaintId] = useState<string | null>(null);
+  const [selectedBanHours, setSelectedBanHours] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!authLoading) {
@@ -268,15 +266,9 @@ export default function Admin() {
   }
 
   const stats = data?.stats || {
-    totalComplaints: 0,
-    pendingComplaints: 0,
-    solvedComplaints: 0,
-    urgentCount: 0,
-    criticalCount: 0,
-    emergencyCount: 0,
-    totalUsers: 0,
-    bannedUsers: 0,
-    abuseLogs: 0,
+    totalComplaints: 0, pendingComplaints: 0, solvedComplaints: 0,
+    urgentCount: 0, criticalCount: 0, emergencyCount: 0,
+    totalUsers: 0, bannedUsers: 0, abuseLogs: 0,
   };
 
   const filteredComplaints = data?.complaints?.filter(
@@ -346,7 +338,6 @@ export default function Admin() {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
-              {/* stat cards unchanged */}
               <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-md bg-primary/10"><MessageSquare className="h-5 w-5 text-primary" /></div><div><p className="text-2xl font-bold">{stats.totalComplaints}</p><p className="text-xs text-muted-foreground">Total Complaints</p></div></div></CardContent></Card>
               <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-md bg-urgency-urgent/10"><AlertCircle className="h-5 w-5 text-urgency-urgent" /></div><div><p className="text-2xl font-bold">{stats.urgentCount}</p><p className="text-xs text-muted-foreground">Urgent</p></div></div></CardContent></Card>
               <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="p-2 rounded-md bg-urgency-critical/10"><Flame className="h-5 w-5 text-urgency-critical" /></div><div><p className="text-2xl font-bold">{stats.criticalCount}</p><p className="text-xs text-muted-foreground">Critical</p></div></div></CardContent></Card>
@@ -421,7 +412,6 @@ export default function Admin() {
                 </Card>
               </TabsContent>
 
-              {/* Abuse logs tab – unchanged */}
               <TabsContent value="abuse" className="space-y-4">
                 <Card>
                   <CardHeader><CardTitle>Abuse Logs</CardTitle><CardDescription>Review flagged content and manage user violations</CardDescription></CardHeader>
@@ -500,16 +490,35 @@ export default function Admin() {
                                         Unban
                                       </Button>
                                     ) : (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-destructive"
-                                        onClick={() => banUserMutation.mutate({ userId: user.id, hours: 48 })}
-                                        disabled={banUserMutation.isPending}
-                                      >
-                                        {banUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                                        Ban 48h
-                                      </Button>
+                                      <div className="flex items-center gap-1">
+                                        <Select
+                                          value={selectedBanHours?.[user.id] || "48"}
+                                          onValueChange={(val) => setSelectedBanHours(prev => ({ ...prev, [user.id]: val }))}
+                                        >
+                                          <SelectTrigger className="w-20 h-8 text-xs">
+                                            <SelectValue placeholder="48h" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="24">24h</SelectItem>
+                                            <SelectItem value="48">48h</SelectItem>
+                                            <SelectItem value="168">7 days</SelectItem>
+                                            <SelectItem value="720">30 days</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-destructive"
+                                          onClick={() => {
+                                            const hours = parseInt(selectedBanHours?.[user.id] || "48");
+                                            banUserMutation.mutate({ userId: user.id, hours });
+                                          }}
+                                          disabled={banUserMutation.isPending}
+                                        >
+                                          {banUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                          Ban
+                                        </Button>
+                                      </div>
                                     )
                                   )}
                                 </TableCell>
