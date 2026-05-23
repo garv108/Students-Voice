@@ -167,9 +167,7 @@ export default function SubmitAI() {
       if (!draft || !draft.title || !draft.description) {
         setDraft(null);
         toast({ title: "Draft incomplete", description: "Please provide details manually.", variant: "destructive" });
-        // fallback: show manual text area
         setEditingDraft(false);
-        // we could show a simple form below, but we'll just ask the user to use direct submission for now
         return;
       }
       setDraft(draft);
@@ -183,6 +181,7 @@ export default function SubmitAI() {
 
   const submitComplaint = async (status: "pending" | "draft") => {
     if (!draft) return;
+    setLoading(true); // <-- added to prevent double-click during submission
     try {
       const response = await apiRequest("POST", "/api/complaints", {
         description: draft.description,
@@ -193,6 +192,12 @@ export default function SubmitAI() {
       });
       if (!response.ok) {
         const err = await response.json();
+        // Handle duplicate (409) specifically
+        if (response.status === 409) {
+          toast({ title: "Duplicate submission", description: err.message, variant: "destructive" });
+          setLoading(false);
+          return; // stay on page so user can edit
+        }
         throw new Error(err.message || "Submission failed");
       }
       queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
@@ -202,6 +207,8 @@ export default function SubmitAI() {
       setLocation("/");
     } catch (error: any) {
       toast({ title: "Submission failed", description: error.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -255,8 +262,13 @@ export default function SubmitAI() {
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
-                <Button onClick={() => submitComplaint("pending")}>Submit Complaint</Button>
-                <Button variant="outline" onClick={() => submitComplaint("draft")}>Save as Draft</Button>
+                <Button onClick={() => submitComplaint("pending")} disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Submit Complaint
+                </Button>
+                <Button variant="outline" onClick={() => submitComplaint("draft")} disabled={loading}>
+                  Save as Draft
+                </Button>
                 <Button variant="ghost" onClick={() => { setDraft(null); setEditingDraft(false); setSufficientInfo(false); }}>Discard Draft</Button>
               </div>
             </CardContent>

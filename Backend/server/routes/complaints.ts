@@ -77,6 +77,20 @@ export function registerComplaintRoutes(app: Express) {
 
         const data = parseResult.data;
 
+        // ------- Duplicate check -------
+        const userComplaints = await storage.getUserComplaints(user.id);
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const duplicate = userComplaints.find(c =>
+          c.originalText.trim() === data.originalText!.trim() &&
+          new Date(c.createdAt) > oneHourAgo
+        );
+        if (duplicate) {
+          return res.status(409).json({
+            message: "You already submitted this complaint recently. Please wait before trying again.",
+          });
+        }
+        // -------------------------------
+
         const profanityCheck = await detectProfanity(data.originalText!);
 
         if (profanityCheck.isAbusive) {
