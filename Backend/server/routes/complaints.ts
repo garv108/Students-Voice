@@ -152,31 +152,31 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
-  /* LEADERBOARD */
-  app.get(
-    "/api/leaderboard",
-    requireCollege,
-    async (req: CollegeRequest & { body: any }, res) => {
-      try {
-        const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
-        const rawStats = await storage.getAdminStats();
+  
+/* LEADERBOARD */
+app.get(
+  "/api/leaderboard",
+  requireCollege,
+  async (req: CollegeRequest & { body: any }, res) => {
+    try {
+      const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
 
-        // Map to frontend-expected keys
-        const stats = {
-          total: rawStats.totalComplaints,
-          urgent: rawStats.urgentCount,
-          critical: rawStats.criticalCount,
-          emergency: rawStats.emergencyCount,
-          solved: rawStats.solvedComplaints,
-        };
+      // Compute stats directly from the returned complaints
+      const stats = {
+        total: complaintsData.length,
+        urgent: complaintsData.filter(c => c.urgency === 'urgent').length,
+        critical: complaintsData.filter(c => c.urgency === 'critical' || c.urgency === 'top_priority').length,
+        emergency: complaintsData.filter(c => c.urgency === 'emergency').length,
+        solved: complaintsData.filter(c => c.solved).length,
+      };
 
-        res.json({ complaints: complaintsData, stats });
-      } catch (error) {
-        console.error("Leaderboard error:", error);
-        res.status(500).json({ message: "Failed to load leaderboard" });
-      }
+      res.json({ complaints: complaintsData, stats });
+    } catch (error) {
+      console.error("Leaderboard error:", error);
+      res.status(500).json({ message: "Failed to load leaderboard" });
     }
-  );
+  }
+);
 
   /* EXPLORE (public filtered list) */
   app.get(
