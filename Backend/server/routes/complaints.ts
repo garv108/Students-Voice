@@ -219,6 +219,32 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
+  /* GET SINGLE COMPLAINT (owner or admin) */
+  app.get(
+    "/api/complaints/:id",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const id = (req as any).params.id;
+        const userId = (req as any).session.userId;
+        const user = req.user;
+
+        const complaint = await storage.getComplaint(id);
+        if (!complaint) return res.status(404).json({ message: "Complaint not found" });
+
+        // Only the owner or admin/moderator can view the full complaint
+        if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        res.json(complaint);
+      } catch (error) {
+        console.error("Get complaint error:", error);
+        res.status(500).json({ message: "Failed to load complaint" });
+      }
+    }
+  );
+
   /* UPDATE COMPLAINT (owner only, draft/pending) */
   app.put(
     "/api/complaints/:id",
