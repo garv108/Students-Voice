@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Loader2, FileEdit, Trash2, Mic, MicOff } from "lucide-react";
+import { Send, Loader2, FileEdit, Trash2, Mic, MicOff, RefreshCw, AlertTriangle } from "lucide-react";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -31,8 +31,6 @@ interface ComplaintDraft {
 }
 
 const STORAGE_KEY = "ai_complaint_chat_messages";
-
-// Check for browser speech recognition support
 const SpeechRecognition =
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -64,20 +62,19 @@ export default function SubmitAI() {
   const [sufficientInfo, setSufficientInfo] = useState(false);
   const [draft, setDraft] = useState<ComplaintDraft | null>(null);
   const [editingDraft, setEditingDraft] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Voice recognition state
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
-  // Initialize speech recognition
   useEffect(() => {
     if (!SpeechRecognition) return;
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = "en-US"; // can be overridden
-
+    recognition.lang = "en-US";
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript.trim();
       if (transcript) {
@@ -85,25 +82,13 @@ export default function SubmitAI() {
       }
       setListening(false);
     };
-
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error:", event.error);
-      if (event.error === "not-allowed") {
-        toast({
-          title: "Microphone access denied",
-          description: "Please allow microphone access in browser settings.",
-          variant: "destructive",
-        });
-      }
       setListening(false);
     };
-
-    recognition.onend = () => {
-      setListening(false);
-    };
-
+    recognition.onend = () => setListening(false);
     recognitionRef.current = recognition;
-  }, [toast]);
+  }, []);
 
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -115,104 +100,82 @@ export default function SubmitAI() {
         recognitionRef.current.start();
         setListening(true);
       } catch (err) {
-        console.error("Error starting speech recognition:", err);
-        toast({
-          title: "Error",
-          description: "Could not start microphone. Try again.",
-          variant: "destructive",
-        });
+        console.error(err);
       }
     }
-  }, [listening, toast]);
+  }, [listening]);
 
-  // Stop listening when component unmounts
   useEffect(() => {
     return () => {
-      if (recognitionRef.current && listening) {
-        recognitionRef.current.stop();
-      }
+      if (recognitionRef.current && listening) recognitionRef.current.stop();
     };
   }, [listening]);
 
-  // Save messages to localStorage
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch (e) {}
   }, [messages]);
 
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
   const clearChat = () => {
-    setMessages([
-      {
-        role: "assistant",
-        content:
-          "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is.",
-      },
-    ]);
+    setMessages([{ role: "assistant", content: "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is." }]);
     setSufficientInfo(false);
     setDraft(null);
     setEditingDraft(false);
+    setRetryMessage(null);
     toast({ title: "Chat cleared" });
   };
 
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   const handleSendMessage = async () => {
     if (!input.trim() || loading) return;
-
-    const userMessage = input.trim();
-    setInput("");
+    const userMessage = retryMessage || input.trim();
+    if (!retryMessage) setInput("");
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setLoading(true);
+    setRetryMessage(null);
 
     try {
       const response = await apiRequest("POST", "/api/complaints/ai-chat", {
         conversation: messages,
         message: userMessage,
       });
-
       if (!response.ok) throw new Error("Chat request failed");
       const data = await response.json();
-
       setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
-
-      if (data.sufficientInfo) {
-        setSufficientInfo(true);
-      }
+      if (data.sufficientInfo) setSufficientInfo(true);
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to get AI response. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to get AI response. Please try again.", variant: "destructive" });
+      setRetryMessage(userMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  const retryLastMessage = () => {
+    if (!retryMessage) return;
+    handleSendMessage();
+  };
+
   const generateDraft = async () => {
     setLoading(true);
     try {
-      const response = await apiRequest("POST", "/api/complaints/ai-draft", {
-        conversation: messages,
-      });
-
+      const response = await apiRequest("POST", "/api/complaints/ai-draft", { conversation: messages });
       if (!response.ok) throw new Error("Draft generation failed");
       const data = await response.json();
-      setDraft(data.draft);
+      const draft = data.draft;
+      // Edge Case 6: validate draft
+      if (!draft || !draft.title || !draft.description) {
+        setDraft(null);
+        toast({ title: "Draft incomplete", description: "Please provide details manually.", variant: "destructive" });
+        // fallback: show manual text area
+        setEditingDraft(false);
+        // we could show a simple form below, but we'll just ask the user to use direct submission for now
+        return;
+      }
+      setDraft(draft);
       setEditingDraft(true);
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to generate draft. You can still type it manually.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to generate draft.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -220,7 +183,6 @@ export default function SubmitAI() {
 
   const submitComplaint = async (status: "pending" | "draft") => {
     if (!draft) return;
-
     try {
       const response = await apiRequest("POST", "/api/complaints", {
         description: draft.description,
@@ -229,73 +191,44 @@ export default function SubmitAI() {
         severity: draft.severity,
         status,
       });
-
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.message || "Submission failed");
       }
-
       queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
-
-      // ✅ CLEAR CHAT HISTORY from localStorage after successful save/submit
       localStorage.removeItem(STORAGE_KEY);
-
-      if (status === "pending") {
-        toast({ title: "Complaint submitted successfully!" });
-      } else {
-        toast({ title: "Draft saved!" });
-      }
+      if (status === "pending") toast({ title: "Complaint submitted successfully!" });
+      else toast({ title: "Draft saved!" });
       setLocation("/");
     } catch (error: any) {
-      toast({
-        title: "Submission failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Submission failed", description: error.message, variant: "destructive" });
     }
   };
 
-  // Draft review view
+  // Draft review view (same as before, unchanged)
   if (draft && editingDraft) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
-        <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-4">
+        <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-4 safe-area-top safe-area-bottom">
           <Card>
             <CardContent className="p-6 space-y-4">
               <h2 className="text-2xl font-bold">Review Your Complaint</h2>
-              <p className="text-muted-foreground">
-                You can edit the AI‑generated draft below before submitting.
-              </p>
-
+              <p className="text-muted-foreground">You can edit the AI‑generated draft below before submitting.</p>
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">Title</label>
-                  <Input
-                    value={draft.title}
-                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                  />
+                  <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
                 </div>
-
                 <div>
                   <label className="text-sm font-medium">Description</label>
-                  <Textarea
-                    rows={8}
-                    value={draft.description}
-                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                  />
+                  <Textarea rows={8} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Category</label>
-                    <Select
-                      value={draft.category}
-                      onValueChange={(value) => setDraft({ ...draft, category: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={draft.category} onValueChange={(value) => setDraft({ ...draft, category: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Academics">Academics</SelectItem>
                         <SelectItem value="Facilities">Facilities</SelectItem>
@@ -307,16 +240,10 @@ export default function SubmitAI() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div>
                     <label className="text-sm font-medium">Severity</label>
-                    <Select
-                      value={draft.severity}
-                      onValueChange={(value) => setDraft({ ...draft, severity: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={draft.severity} onValueChange={(value) => setDraft({ ...draft, severity: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
@@ -327,24 +254,10 @@ export default function SubmitAI() {
                   </div>
                 </div>
               </div>
-
               <div className="flex gap-3 pt-4">
-                <Button onClick={() => submitComplaint("pending")}>
-                  Submit Complaint
-                </Button>
-                <Button variant="outline" onClick={() => submitComplaint("draft")}>
-                  Save as Draft
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setDraft(null);
-                    setEditingDraft(false);
-                    setSufficientInfo(false);
-                  }}
-                >
-                  Discard Draft
-                </Button>
+                <Button onClick={() => submitComplaint("pending")}>Submit Complaint</Button>
+                <Button variant="outline" onClick={() => submitComplaint("draft")}>Save as Draft</Button>
+                <Button variant="ghost" onClick={() => { setDraft(null); setEditingDraft(false); setSufficientInfo(false); }}>Discard Draft</Button>
               </div>
             </CardContent>
           </Card>
@@ -357,47 +270,38 @@ export default function SubmitAI() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-4 py-2 min-h-0">
+      <main className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-4 py-2 min-h-0 safe-area-top safe-area-bottom">
         <div className="flex items-center justify-between mb-2 flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold">AI‑Assisted Complaint</h1>
-            <p className="text-muted-foreground text-sm">
-              Answer a few questions and we'll draft your complaint.
-            </p>
+            <p className="text-muted-foreground text-sm">Answer a few questions and we'll draft your complaint.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setLocation("/submit")}>
-              Direct Submission
-            </Button>
-            <Button variant="ghost" size="icon" title="Clear chat" onClick={clearChat}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <Button variant="outline" size="sm" onClick={() => setLocation("/submit")}>Direct Submission</Button>
+            <Button variant="ghost" size="icon" title="Clear chat" onClick={clearChat}><Trash2 className="h-4 w-4" /></Button>
           </div>
         </div>
 
         <Card className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] px-4 py-2 rounded-xl ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
-                >
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] px-4 py-2 rounded-xl ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                   {msg.content}
                 </div>
               </div>
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] px-4 py-2 rounded-xl bg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
+                <div className="max-w-[80%] px-4 py-2 rounded-xl bg-muted"><Loader2 className="h-4 w-4 animate-spin" /></div>
+              </div>
+            )}
+            {/* Edge Case 3: Retry button */}
+            {retryMessage && !loading && (
+              <div className="flex justify-end px-4">
+                <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={retryLastMessage}>
+                  <RefreshCw className="h-3 w-3" /> Retry
+                </Button>
               </div>
             )}
             <div ref={chatEndRef} />
@@ -406,13 +310,8 @@ export default function SubmitAI() {
           <div className="border-t p-3 space-y-3 flex-shrink-0">
             {sufficientInfo && !draft && (
               <div className="flex justify-center">
-                <Button
-                  onClick={generateDraft}
-                  disabled={loading}
-                  className="gap-2"
-                >
-                  <FileEdit className="h-4 w-4" />
-                  Generate Draft
+                <Button onClick={generateDraft} disabled={loading} className="gap-2">
+                  <FileEdit className="h-4 w-4" /> Generate Draft
                 </Button>
               </div>
             )}
@@ -426,7 +325,6 @@ export default function SubmitAI() {
                 disabled={loading || (sufficientInfo && draft !== null)}
                 className="flex-1"
               />
-
               {SpeechRecognition && (
                 <Button
                   variant={listening ? "destructive" : "outline"}
@@ -436,19 +334,10 @@ export default function SubmitAI() {
                   className={`relative ${listening ? "animate-pulse" : ""}`}
                   title={listening ? "Stop listening" : "Speak"}
                 >
-                  {listening ? (
-                    <MicOff className="h-4 w-4" />
-                  ) : (
-                    <Mic className="h-4 w-4" />
-                  )}
+                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </Button>
               )}
-
-              <Button
-                onClick={handleSendMessage}
-                disabled={loading || !input.trim()}
-                size="icon"
-              >
+              <Button onClick={handleSendMessage} disabled={loading || !input.trim()} size="icon">
                 <Send className="h-4 w-4" />
               </Button>
             </div>

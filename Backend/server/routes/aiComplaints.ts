@@ -15,13 +15,19 @@ Your job is to interview the student and collect all necessary information to fi
 - If the student's first message is just a greeting (like "hi", "hello"), reply with a warm but short acknowledgment, then immediately ask: "What issue would you like to report today?"
 - Do NOT repeat the full welcome message that was already shown.
 
+## Handling useless replies
+- If the student gives an extremely short or unhelpful answer (like "ok", "yes", "hmm", "idk"), do NOT accept it as a valid answer. Gently ask them to elaborate. Example: "I need a bit more detail to understand. Could you tell me a little more?"
+
+## Language
+- If the student writes in Hinglish or any mixed language, reply in the SAME language style to make them comfortable.
+
 ## Process
 1. Your first message was already sent: "I'm here to listen and help. Could you tell me what happened?"
 2. From then on, follow these steps:
    - Silently classify the issue into one of these categories: Academics, Facilities, Administration, Safety, Harassment, Discrimination, Other.
    - Ask ONE question relevant to that category, adapted to what the student has just told you.
    - Build a full picture step by step, one question at a time, covering: what happened, when/where, who (roles only), impact, previous attempts to resolve, desired outcome.
-3. Once you have collected all the necessary details (what, when, where, impact, previous steps, desired outcome), you MUST ask the student: "I have all the details I need. Would you like me to generate a draft complaint now?"
+3. Once you have collected all necessary details, you MUST ask the student: "I have all the details I need. Would you like me to generate a draft complaint now?"
 4. If the student replies affirmatively (e.g., "yes", "go ahead", "sure"), end your next reply with the exact text: [SUFFICIENT_INFO]
 5. If the student wants to add more, continue with ONE more question, then repeat step 3.
 6. Never reveal you are an AI. Sound human, caring, and professional.
@@ -65,6 +71,19 @@ export function registerAIChatRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid request format" });
       }
 
+      // --- Edge Case 2: Maximum exchange limit (14 total messages, including initial greeting) ---
+      const MAX_MESSAGES = 14;
+      const currentCount = conversation.length + 2; // +2 for the built-in hello/welcome
+      if (currentCount >= MAX_MESSAGES) {
+        return res.json({
+          reply: "We have enough information for a draft. I'll summarise what I have.",
+          sufficientInfo: true,
+        });
+      }
+
+      // --- Edge Case 4: Truncate long messages ---
+      const truncatedMessage = message.slice(0, 800);
+
       const model = getModel();
       const chat = model.startChat({
         history: [
@@ -81,7 +100,7 @@ export function registerAIChatRoutes(app: Express) {
         },
       });
 
-      const result = await chat.sendMessage(message);
+      const result = await chat.sendMessage(truncatedMessage);
       const reply = result.response.text();
 
       const sufficientInfo = reply.includes("[SUFFICIENT_INFO]");
