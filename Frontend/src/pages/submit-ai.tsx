@@ -39,7 +39,8 @@ export default function SubmitAI() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is.",
+      content:
+        "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -117,7 +118,7 @@ export default function SubmitAI() {
 
     try {
       const response = await apiRequest("POST", "/api/complaints", {
-        description: draft.description,  // AI draft uses 'description'
+        description: draft.description,
         title: draft.title,
         category: draft.category,
         severity: draft.severity,
@@ -149,9 +150,9 @@ export default function SubmitAI() {
   // If draft is ready, show editable form
   if (draft && editingDraft) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background flex flex-col">
         <Header />
-        <main className="mx-auto max-w-3xl px-4 py-8">
+        <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-4">
           <Card>
             <CardContent className="p-6 space-y-4">
               <h2 className="text-2xl font-bold">Review Your Complaint</h2>
@@ -244,24 +245,26 @@ export default function SubmitAI() {
     );
   }
 
-  // Main chat interface
+  // Main chat interface – full viewport height, only chat messages scroll
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-4 flex items-center justify-between">
+      <main className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-4 py-2 min-h-0">
+        {/* Fixed header section */}
+        <div className="flex items-center justify-between mb-2 flex-shrink-0">
           <div>
-            <h1 className="text-3xl font-bold">AI-Assisted Complaint</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl font-bold">AI‑Assisted Complaint</h1>
+            <p className="text-muted-foreground text-sm">
               Answer a few questions and we'll draft your complaint.
             </p>
           </div>
-          <Button variant="outline" onClick={() => setLocation("/submit")}>
+          <Button variant="outline" size="sm" onClick={() => setLocation("/submit")}>
             Direct Submission
           </Button>
         </div>
 
-        <Card className="h-[600px] flex flex-col">
+        {/* Chat card – fills remaining space */}
+        <Card className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg, i) => (
               <div
@@ -289,12 +292,12 @@ export default function SubmitAI() {
             <div ref={chatEndRef} />
           </div>
 
-          <div className="border-t p-4 space-y-3">
-            {sufficientInfo && (
+          <div className="border-t p-3 space-y-3 flex-shrink-0">
+            {sufficientInfo && !draft && (
               <div className="flex justify-center">
                 <Button
                   onClick={generateDraft}
-                  disabled={loading || draft !== null}
+                  disabled={loading}
                   className="gap-2"
                 >
                   <FileEdit className="h-4 w-4" />
