@@ -10,7 +10,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
-import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, FileEdit } from "lucide-react";
+import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, FileEdit, Compass } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 
@@ -21,6 +21,7 @@ export function Header() {
 
   const navLinks = [
     { href: "/dashboard", label: "Leaderboard", icon: Home },
+    { href: "/explore", label: "Explore", icon: Compass },           // NEW
     { href: "/submit-ai", label: "Submit Problem", icon: Plus, requiresAuth: true },
   ];
 

@@ -168,6 +168,30 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
+  /* EXPLORE (public filtered list) */   // ← NEW ROUTE
+  app.get(
+    "/api/complaints/explore",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const query = req.query as any;
+        const complaints = await storage.getExploreComplaints({
+          search: query.search,
+          category: query.category,
+          severity: query.severity,
+          urgency: query.urgency,
+          status: query.status,
+          sort: query.sort,
+          collegeId: req.collegeId!,
+        });
+        res.json({ complaints });
+      } catch (error) {
+        console.error("Explore error:", error);
+        res.status(500).json({ message: "Failed to load complaints" });
+      }
+    }
+  );
+
   /* LIKE */
   app.post(
     "/api/complaints/:id/like",
@@ -305,7 +329,7 @@ export function registerComplaintRoutes(app: Express) {
 
         await storage.updateComplaint(id, {
           status: "withdrawn",
-          withdrawnAt: new Date(),   // NEW
+          withdrawnAt: new Date(),
         } as any);
         res.json({ success: true });
       } catch (error) {

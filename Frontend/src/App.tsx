@@ -6,7 +6,8 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth";
 import SubmitAI from "./pages/submit-ai";
 import MyComplaints from "./pages/my-complaints";
-import EditComplaint from "./pages/edit-complaint";   // NEW
+import EditComplaint from "./pages/edit-complaint";
+import Explore from "./pages/explore";   // NEW
 
 // Pages
 import Landing from "./pages/landing";
@@ -64,9 +65,10 @@ function Router() {
       <Route path="/my-complaints">
         <ProtectedRoute component={MyComplaints} />
       </Route>
-      <Route path="/edit-complaint/:id">                            {/* NEW */}
+      <Route path="/edit-complaint/:id">
         <ProtectedRoute component={EditComplaint} />
       </Route>
+      <Route path="/explore" component={Explore} />      {/* NEW - public */}
       <Route path="/admin">
         <AdminRoute component={Admin} />
       </Route>
