@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Loader2, FileEdit, Trash2 } from "lucide-react";
+import { Send, Loader2, FileEdit, Trash2, Mic, MicOff } from "lucide-react";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -32,25 +32,24 @@ interface ComplaintDraft {
 
 const STORAGE_KEY = "ai_complaint_chat_messages";
 
+// Check for browser speech recognition support
+const SpeechRecognition =
+  (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
 export default function SubmitAI() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  // Load messages from localStorage (or use default welcome)
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch (e) {
-      // ignore corrupt data
-    }
+    } catch (e) {}
     return [
       {
         role: "assistant",
@@ -67,13 +66,79 @@ export default function SubmitAI() {
   const [editingDraft, setEditingDraft] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Save messages to localStorage whenever they change
+  // Voice recognition state
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;       // stop after silence
+    recognition.interimResults = false;  // only final transcript
+    recognition.lang = "en-US";          // default, can be overridden
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript.trim();
+      if (transcript) {
+        setInput((prev) => prev + (prev ? " " : "") + transcript);
+      }
+      setListening(false);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      if (event.error === "not-allowed") {
+        toast({
+          title: "Microphone access denied",
+          description: "Please allow microphone access in browser settings.",
+          variant: "destructive",
+        });
+      }
+      setListening(false);
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    recognitionRef.current = recognition;
+  }, [toast]);
+
+  const toggleListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+    if (listening) {
+      recognitionRef.current.stop();
+      setListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setListening(true);
+      } catch (err) {
+        console.error("Error starting speech recognition:", err);
+        toast({
+          title: "Error",
+          description: "Could not start microphone. Try again.",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [listening, toast]);
+
+  // Stop listening when component unmounts
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current && listening) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [listening]);
+
+  // Save messages to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch (e) {
-      // ignore quota errors
-    }
+    } catch (e) {}
   }, [messages]);
 
   const clearChat = () => {
@@ -187,7 +252,7 @@ export default function SubmitAI() {
     }
   };
 
-  // If draft is ready, show editable form
+  // Draft review view
   if (draft && editingDraft) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -285,12 +350,11 @@ export default function SubmitAI() {
     );
   }
 
-  // Main chat interface – full viewport height, only chat messages scroll
+  // Main chat view
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
       <main className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-4 py-2 min-h-0">
-        {/* Fixed header section */}
         <div className="flex items-center justify-between mb-2 flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold">AI‑Assisted Complaint</h1>
@@ -308,7 +372,6 @@ export default function SubmitAI() {
           </div>
         </div>
 
-        {/* Chat card – fills remaining space */}
         <Card className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg, i) => (
@@ -353,12 +416,32 @@ export default function SubmitAI() {
 
             <div className="flex gap-2">
               <Input
-                placeholder="Type your answer..."
+                placeholder={listening ? "Listening..." : "Type your answer..."}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                 disabled={loading || (sufficientInfo && draft !== null)}
+                className="flex-1"
               />
+
+              {/* Voice input button */}
+              {SpeechRecognition && (
+                <Button
+                  variant={listening ? "destructive" : "outline"}
+                  size="icon"
+                  onClick={toggleListening}
+                  disabled={loading}
+                  className={`relative ${listening ? "animate-pulse" : ""}`}
+                  title={listening ? "Stop listening" : "Speak"}
+                >
+                  {listening ? (
+                    <MicOff className="h-4 w-4" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+
               <Button
                 onClick={handleSendMessage}
                 disabled={loading || !input.trim()}
