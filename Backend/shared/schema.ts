@@ -5,7 +5,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const roleEnum = pgEnum("role", ["student", "moderator", "admin"]);
-export const statusEnum = pgEnum("status", ["pending", "in_progress", "solved", "draft"]);  // ADDED "draft"
+export const statusEnum = pgEnum("status", ["pending", "in_progress", "solved", "draft", "withdrawn"]);
 export const urgencyEnum = pgEnum("urgency", ["normal", "urgent", "critical", "top_priority", "emergency"]);
 export const severityEnum = pgEnum("severity", ["good", "average", "poor", "bad", "worst", "critical"]);
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "verified", "rejected"]);

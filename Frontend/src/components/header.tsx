@@ -10,7 +10,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
-import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard } from "lucide-react";
+import { Menu, LogOut, User, Shield, Home, Plus, LayoutDashboard, FileEdit } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 
@@ -21,7 +21,7 @@ export function Header() {
 
   const navLinks = [
     { href: "/dashboard", label: "Leaderboard", icon: Home },
-    { href: "/submit-ai", label: "Submit Problem", icon: Plus, requiresAuth: true }, // ← changed to /submit-ai
+    { href: "/submit-ai", label: "Submit Problem", icon: Plus, requiresAuth: true },
   ];
 
   const adminLinks = [
@@ -121,6 +121,13 @@ export function Header() {
                       </Link>
                     </>
                   )}
+                  <DropdownMenuSeparator />
+                  <Link href="/my-complaints">
+                    <DropdownMenuItem className="gap-2">
+                      <FileEdit className="h-4 w-4" />
+                      <span>My Complaints</span>
+                    </DropdownMenuItem>
+                  </Link>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleLogout}

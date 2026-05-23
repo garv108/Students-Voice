@@ -59,16 +59,14 @@ export function registerComplaintRoutes(app: Express) {
           });
         }
 
-        // Combine originalText and description (AI draft sends 'description')
         const bodyText = req.body.originalText || req.body.description;
         if (!bodyText) {
           return res.status(400).json({ message: "Complaint text is required" });
         }
 
-        // Parse with updated schema (which now accepts optional originalText and description)
         const parseResult = insertComplaintSchema.safeParse({
           ...req.body,
-          originalText: bodyText,   // ensure we have the actual text
+          originalText: bodyText,
         });
 
         if (!parseResult.success) {
@@ -107,8 +105,8 @@ export function registerComplaintRoutes(app: Express) {
           summary: analysis.summary,
           severity: analysis.severity,
           keywords: analysis.keywords,
-          status: data.status || "pending",   // <-- accepts draft/pending
-          category: data.category || null,    // <-- new field
+          status: data.status || "pending",
+          category: data.category || null,
           solved: false,
           solvedBy: null,
           solvedAt: null,
@@ -134,6 +132,25 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
+  /* MY COMPLAINTS */
+  app.get(
+    "/api/my-complaints",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const userId = (req as any).session.userId;
+        if (!userId) {
+          return res.status(401).json({ message: "Not logged in" });
+        }
+        const complaints = await storage.getUserComplaints(userId);
+        res.json(complaints);
+      } catch (error) {
+        console.error("My complaints error:", error);
+        res.status(500).json({ message: "Failed to load your complaints" });
+      }
+    }
+  );
+
   /* LEADERBOARD */
   app.get(
     "/api/leaderboard",
@@ -142,7 +159,6 @@ export function registerComplaintRoutes(app: Express) {
       try {
         const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
         const stats = await storage.getAdminStats();
-
         res.json({ complaints: complaintsData, stats });
       } catch (error) {
         console.error("Leaderboard error:", error);
@@ -203,12 +219,42 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
-  /* DELETE */
+  /* WITHDRAW (Soft delete for users) */
+  app.post(
+    "/api/complaints/:id/withdraw",
+    requireCollege,
+    async (req: CollegeRequest, res) => {                // ✅ typed as CollegeRequest
+      try {
+        const { id } = req.params;
+        const userId = (req as any).session.userId;
+
+        const complaint = await storage.getComplaint(id);
+        if (!complaint) return res.status(404).json({ message: "Complaint not found" });
+
+        const user = req.user;                            // ✅ now recognized
+        if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
+          return res.status(403).json({ message: "You can only withdraw your own complaints" });
+        }
+
+        await storage.updateComplaint(id, { status: "withdrawn" });
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Withdraw error:", error);
+        res.status(500).json({ message: "Failed to withdraw complaint" });
+      }
+    }
+  );
+
+  /* DELETE (Admin only, hard delete) */
   app.delete(
     "/api/complaints/:id",
     requireCollege,
-    async (req, res) => {
+    async (req: CollegeRequest, res) => {                // ✅ typed as CollegeRequest
       try {
+        const user = req.user;                            // ✅ now recognized
+        if (!user || (user.role !== "admin" && user.role !== "moderator")) {
+          return res.status(403).json({ message: "Only admins can permanently delete complaints" });
+        }
         const { id } = req.params;
         await storage.deleteComplaint(id);
         res.json({ success: true });

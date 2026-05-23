@@ -5,6 +5,7 @@ import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth";
 import SubmitAI from "./pages/submit-ai";
+import MyComplaints from "./pages/my-complaints";   // <-- NEW
 
 // Pages
 import Landing from "./pages/landing";
@@ -16,12 +17,9 @@ import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
 import VerifyEmail from "./pages/VerifyEmail";
 
-// =============================
-// Protected Route (Login Only)
-// =============================
+// ProtectedRoute and AdminRoute components (unchanged)
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -29,20 +27,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       </div>
     );
   }
-
-  if (!user) {
-    return <Redirect to="/login" />;
-  }
-
+  if (!user) return <Redirect to="/login" />;
   return <Component />;
 }
 
-// =============================
-// Admin Route (Role-Based)
-// =============================
 function AdminRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -50,21 +40,11 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
       </div>
     );
   }
-
-  if (!user) {
-    return <Redirect to="/login" />;
-  }
-
-  if (user.role !== "admin" && user.role !== "moderator") {
-    return <Redirect to="/dashboard" />;
-  }
-
+  if (!user) return <Redirect to="/login" />;
+  if (user.role !== "admin" && user.role !== "moderator") return <Redirect to="/dashboard" />;
   return <Component />;
 }
 
-// =============================
-// Router Component
-// =============================
 function Router() {
   return (
     <Switch>
@@ -72,31 +52,26 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
       <Route path="/verify-email" component={VerifyEmail} />
-      
       <Route path="/dashboard">
         <ProtectedRoute component={Home} />
       </Route>
-      
-      <Route path="/submit-ai">
-        <ProtectedRoute component={SubmitAI} />
-      </Route>
-      
       <Route path="/submit">
         <ProtectedRoute component={Submit} />
       </Route>
-      
+      <Route path="/submit-ai">
+        <ProtectedRoute component={SubmitAI} />
+      </Route>
+      <Route path="/my-complaints">                    {/* NEW */}
+        <ProtectedRoute component={MyComplaints} />
+      </Route>
       <Route path="/admin">
         <AdminRoute component={Admin} />
       </Route>
-      
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// =============================
-// App Component
-// =============================
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -111,8 +86,6 @@ function App() {
 }
 
 export default App;
-
-
 /*
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";

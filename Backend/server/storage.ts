@@ -45,7 +45,7 @@ export interface IStorage {
   updateUserBan(userId: string, bannedUntil: Date | null): Promise<void>;
   updateUserRole(userId: string, role: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
-  updateUser(userId: string, updates: Partial<User>): Promise<User | undefined>; // NEW
+  updateUser(userId: string, updates: Partial<User>): Promise<User | undefined>;
   
   setVerificationToken(userId: string, token: string, expiry: Date): Promise<void>;
   verifyUser(token: string): Promise<boolean>;
@@ -55,6 +55,7 @@ export interface IStorage {
   getComplaint(id: string): Promise<Complaint | undefined>;
   getComplaints(): Promise<Complaint[]>;
   getLeaderboardComplaints(collegeId?: string): Promise<Complaint[]>;
+  getUserComplaints(userId: string): Promise<Complaint[]>;  // NEW
   updateComplaint(id: string, updates: Partial<Complaint>): Promise<Complaint | undefined>;
   deleteComplaint(id: string): Promise<void>;
   deleteComplaintsBulk(ids: string[]): Promise<void>;
@@ -131,7 +132,6 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).orderBy(desc(users.createdAt));
   }
 
-  // NEW: update any fields of a user
   async updateUser(userId: string, updates: Partial<User>): Promise<User | undefined> {
     const [updated] = await db
       .update(users)
@@ -197,18 +197,32 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(complaints).orderBy(desc(complaints.createdAt));
   }
 
+  // Leaderboard now excludes drafts and withdrawn complaints
   async getLeaderboardComplaints(collegeId?: string): Promise<Complaint[]> {
     if (collegeId) {
       return db
         .select()
         .from(complaints)
-        .where(eq(complaints.collegeId, collegeId))
+        .where(and(
+          eq(complaints.collegeId, collegeId),
+          sql`${complaints.status} NOT IN ('draft', 'withdrawn')`
+        ))
         .orderBy(desc(complaints.likesCount));
     }
     return db
       .select()
       .from(complaints)
+      .where(sql`${complaints.status} NOT IN ('draft', 'withdrawn')`)
       .orderBy(desc(complaints.likesCount));
+  }
+
+  // NEW: return all complaints for a specific user (all statuses)
+  async getUserComplaints(userId: string): Promise<Complaint[]> {
+    return db
+      .select()
+      .from(complaints)
+      .where(eq(complaints.userId, userId))
+      .orderBy(desc(complaints.createdAt));
   }
 
   async getLeaderboardComplaintsByCollege(collegeId: string) {
