@@ -223,15 +223,15 @@ export function registerComplaintRoutes(app: Express) {
   app.post(
     "/api/complaints/:id/withdraw",
     requireCollege,
-    async (req: CollegeRequest, res) => {                // ✅ typed as CollegeRequest
+    async (req: CollegeRequest, res) => {
       try {
-        const { id } = req.params;
+        const id = (req as any).params.id;                     // FIXED: access params safely
         const userId = (req as any).session.userId;
 
         const complaint = await storage.getComplaint(id);
         if (!complaint) return res.status(404).json({ message: "Complaint not found" });
 
-        const user = req.user;                            // ✅ now recognized
+        const user = req.user;
         if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
           return res.status(403).json({ message: "You can only withdraw your own complaints" });
         }
@@ -249,13 +249,13 @@ export function registerComplaintRoutes(app: Express) {
   app.delete(
     "/api/complaints/:id",
     requireCollege,
-    async (req: CollegeRequest, res) => {                // ✅ typed as CollegeRequest
+    async (req: CollegeRequest, res) => {
       try {
-        const user = req.user;                            // ✅ now recognized
+        const id = (req as any).params.id;                     // FIXED: access params safely
+        const user = req.user;
         if (!user || (user.role !== "admin" && user.role !== "moderator")) {
           return res.status(403).json({ message: "Only admins can permanently delete complaints" });
         }
-        const { id } = req.params;
         await storage.deleteComplaint(id);
         res.json({ success: true });
       } catch (error) {
