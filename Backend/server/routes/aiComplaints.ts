@@ -53,14 +53,15 @@ Return ONLY valid JSON (no extra text) with these fields:
 }
 `;
 
+// ✅ Use Gemini 3.1 Flash Lite for high rate limits and good performance
 const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
 
 function getModel() {
   if (!genAI) throw new Error("Gemini API not configured. Set GEMINI_API_KEY environment variable.");
-  // Using gemini-1.5-flash for speed and cost; change to gemini-1.5-pro if needed
-  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  // High RPM, TPM, RPD – ideal for multi-user chat applications
+  return genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 }
 
 export function registerAIChatRoutes(app: Express) {
