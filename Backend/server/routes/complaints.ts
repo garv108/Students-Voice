@@ -219,6 +219,46 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
+  /* UPDATE COMPLAINT (owner only, draft/pending) */
+  app.put(
+    "/api/complaints/:id",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const id = (req as any).params.id;
+        const userId = (req as any).session.userId;
+        const user = req.user;
+
+        const complaint = await storage.getComplaint(id);
+        if (!complaint) return res.status(404).json({ message: "Complaint not found" });
+
+        // Only the owner can edit their own complaint (or admin)
+        if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
+          return res.status(403).json({ message: "You can only edit your own complaints" });
+        }
+
+        // Only allow editing if status is draft or pending (or admin)
+        if (complaint.status !== "draft" && complaint.status !== "pending" && user?.role !== "admin" && user?.role !== "moderator") {
+          return res.status(400).json({ message: "Only draft or pending complaints can be edited" });
+        }
+
+        const body = (req as any).body || {};
+        const updates: any = {};
+        if (body.originalText !== undefined) updates.originalText = body.originalText;
+        if (body.description !== undefined) updates.originalText = body.description; // fallback
+        if (body.category !== undefined) updates.category = body.category;
+        if (body.severity !== undefined) updates.severity = body.severity;
+        if (body.status !== undefined) updates.status = body.status;
+
+        const updated = await storage.updateComplaint(id, updates);
+        res.json(updated);
+      } catch (error) {
+        console.error("Update complaint error:", error);
+        res.status(500).json({ message: "Failed to update complaint" });
+      }
+    }
+  );
+
   /* WITHDRAW (Soft delete for users) */
   app.post(
     "/api/complaints/:id/withdraw",
@@ -300,7 +340,7 @@ export function registerComplaintRoutes(app: Express) {
     async (req: CollegeRequest, res) => {
       try {
         const id = (req as any).params.id;
-        const message = (req as any).body?.message;       // FIXED: cast to any
+        const message = (req as any).body?.message;
         const userId = (req as any).session.userId;
         const user = req.user;
 

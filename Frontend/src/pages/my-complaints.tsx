@@ -10,13 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
-import { ComplaintChat } from "@/components/complaint-chat";   // NEW
+import { ComplaintChat } from "@/components/complaint-chat";
 import {
   FileEdit,
   Plus,
   AlertTriangle,
   Archive,
-  MessageCircle,   // NEW
+  MessageCircle,
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -32,7 +32,7 @@ const statusTabs = [
 export default function MyComplaints() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [chatComplaintId, setChatComplaintId] = useState<string | null>(null);   // NEW
+  const [chatComplaintId, setChatComplaintId] = useState<string | null>(null);
 
   const { data: complaints, isLoading, error } = useQuery<Complaint[]>({
     queryKey: ["/api/my-complaints"],
@@ -134,7 +134,7 @@ export default function MyComplaints() {
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           {complaint.status === "draft" ? (
-                            <Link href="/submit-ai">
+                            <Link href={`/edit-complaint/${complaint.id}`}>   {/* FIXED */}
                               <Button variant="outline" size="sm" className="gap-1">
                                 <FileEdit className="h-4 w-4" /> Edit
                               </Button>
@@ -188,7 +188,6 @@ export default function MyComplaints() {
       </main>
       <Footer />
 
-      {/* Chat Panel */}
       {chatComplaintId && (
         <ComplaintChat
           complaintId={chatComplaintId}

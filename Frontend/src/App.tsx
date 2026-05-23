@@ -5,7 +5,8 @@ import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth";
 import SubmitAI from "./pages/submit-ai";
-import MyComplaints from "./pages/my-complaints";   // <-- NEW
+import MyComplaints from "./pages/my-complaints";
+import EditComplaint from "./pages/edit-complaint";   // NEW
 
 // Pages
 import Landing from "./pages/landing";
@@ -17,7 +18,6 @@ import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
 import VerifyEmail from "./pages/VerifyEmail";
 
-// ProtectedRoute and AdminRoute components (unchanged)
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
   if (isLoading) {
@@ -61,8 +61,11 @@ function Router() {
       <Route path="/submit-ai">
         <ProtectedRoute component={SubmitAI} />
       </Route>
-      <Route path="/my-complaints">                    {/* NEW */}
+      <Route path="/my-complaints">
         <ProtectedRoute component={MyComplaints} />
+      </Route>
+      <Route path="/edit-complaint/:id">                            {/* NEW */}
+        <ProtectedRoute component={EditComplaint} />
       </Route>
       <Route path="/admin">
         <AdminRoute component={Admin} />
