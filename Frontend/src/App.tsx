@@ -4,10 +4,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { ErrorBoundary } from "@/components/error-boundary";   // <-- NEW
 import SubmitAI from "./pages/submit-ai";
 import MyComplaints from "./pages/my-complaints";
 import EditComplaint from "./pages/edit-complaint";
-import Explore from "./pages/explore";   // NEW
+import Explore from "./pages/explore";
 
 // Pages
 import Landing from "./pages/landing";
@@ -68,7 +69,7 @@ function Router() {
       <Route path="/edit-complaint/:id">
         <ProtectedRoute component={EditComplaint} />
       </Route>
-      <Route path="/explore" component={Explore} />      {/* NEW - public */}
+      <Route path="/explore" component={Explore} />
       <Route path="/admin">
         <AdminRoute component={Admin} />
       </Route>
@@ -82,8 +83,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Toaster />
-          <Router />
+          <ErrorBoundary>
+            <Toaster />
+            <Router />
+          </ErrorBoundary>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
