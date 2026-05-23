@@ -74,9 +74,9 @@ export default function SubmitAI() {
   useEffect(() => {
     if (!SpeechRecognition) return;
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;       // stop after silence
-    recognition.interimResults = false;  // only final transcript
-    recognition.lang = "en-US";          // default, can be overridden
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US"; // can be overridden
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript.trim();
@@ -236,6 +236,9 @@ export default function SubmitAI() {
       }
 
       queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+
+      // ✅ CLEAR CHAT HISTORY from localStorage after successful save/submit
+      localStorage.removeItem(STORAGE_KEY);
 
       if (status === "pending") {
         toast({ title: "Complaint submitted successfully!" });
@@ -424,7 +427,6 @@ export default function SubmitAI() {
                 className="flex-1"
               />
 
-              {/* Voice input button */}
               {SpeechRecognition && (
                 <Button
                   variant={listening ? "destructive" : "outline"}
