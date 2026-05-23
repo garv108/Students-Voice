@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   TrendingUp,
   Users,
@@ -26,7 +26,7 @@ import {
   Flame,
   AlertCircle,
   CheckCircle,
-  BarChart3,
+  X,
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -37,12 +37,18 @@ interface LeaderboardData {
     userDisliked?: boolean;
     userReactions?: string[];
   })[];
-  stats: {
-    total: number;
-    urgent: number;
-    critical: number;
-    emergency: number;
-    solved: number;
+  stats?: {
+    total?: number;
+    urgent?: number;
+    critical?: number;
+    emergency?: number;
+    solved?: number;
+    // fallback keys
+    totalComplaints?: number;
+    urgentCount?: number;
+    criticalCount?: number;
+    emergencyCount?: number;
+    solvedComplaints?: number;
   };
 }
 
@@ -54,40 +60,39 @@ export default function Home() {
     queryKey: ["/api/leaderboard"],
   });
 
-  const filteredComplaints = data?.complaints?.filter((complaint) => {
-    if (urgencyFilter !== "all" && complaint.urgency !== urgencyFilter) {
-      return false;
-    }
-    if (statusFilter !== "all") {
-      if (statusFilter === "solved" && !complaint.solved) return false;
-      if (statusFilter === "pending" && complaint.status !== "pending") return false;
-      if (statusFilter === "in_progress" && complaint.status !== "in_progress")
-        return false;
-    }
-    return true;
-  });
+  const filteredComplaints = useMemo(() => {
+    return data?.complaints?.filter((complaint) => {
+      if (urgencyFilter !== "all" && complaint.urgency !== urgencyFilter) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "solved" && !complaint.solved) return false;
+        if (statusFilter === "pending" && complaint.status !== "pending") return false;
+        if (statusFilter === "in_progress" && complaint.status !== "in_progress") return false;
+      }
+      return true;
+    }) || [];
+  }, [data, urgencyFilter, statusFilter]);
 
-  const stats = data?.stats || {
-    total: 0,
-    urgent: 0,
-    critical: 0,
-    emergency: 0,
-    solved: 0,
-  };
+  // Compute stats directly from complaints, with fallback to backend stats if available
+  const stats = useMemo(() => {
+    const complaints = data?.complaints || [];
+    const total = data?.stats?.total ?? data?.stats?.totalComplaints ?? complaints.length;
+    const urgent = data?.stats?.urgent ?? data?.stats?.urgentCount ?? complaints.filter(c => c.urgency === 'urgent').length;
+    const critical = data?.stats?.critical ?? data?.stats?.criticalCount ?? complaints.filter(c => c.urgency === 'critical' || c.urgency === 'top_priority').length;
+    const emergency = data?.stats?.emergency ?? data?.stats?.emergencyCount ?? complaints.filter(c => c.urgency === 'emergency').length;
+    const solved = data?.stats?.solved ?? data?.stats?.solvedComplaints ?? complaints.filter(c => c.solved).length;
+    return { total, urgent, critical, emergency, solved };
+  }, [data]);
 
-  // BUG FIX: similarComplaintsCount already counts duplicates on backend.
-  // Adding +1 was double-counting the original complaint itself.
-  // Now: totalReports = number of unique issues (stats.total) + all similar/duplicate reports
-  const totalReports =
-    (data?.complaints?.reduce(
-      (sum, complaint) => sum + (complaint.similarComplaintsCount || 0),
-      0
-    ) || 0) + (stats.total || 0);
+  const totalReports = useMemo(() => {
+    const complaints = data?.complaints || [];
+    const similarCounts = complaints.reduce((sum, c) => sum + (c.similarComplaintsCount || 0), 0);
+    return similarCounts + stats.total;
+  }, [data, stats.total]);
 
-  const urgencyLevels = ["normal", "urgent", "critical", "top_priority", "emergency"] as const;
+  const hasFilters = urgencyFilter !== "all" || statusFilter !== "all";
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       <Header />
 
       {/* Hero Section */}
@@ -97,19 +102,15 @@ export default function Home() {
             <div className="flex-1 space-y-6">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-primary" />
-                <span className="text-sm font-medium text-primary">
-                  Live Campus Issues Tracker
-                </span>
+                <span className="text-sm font-medium text-primary">Live Campus Issues Tracker</span>
               </div>
-              <h1 className="text-4xl font-bold tracking-tight">
-                Student's Voice Platform
-              </h1>
+              <h1 className="text-4xl font-bold tracking-tight">Student's Voice Platform</h1>
               <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
                 Report campus concerns and track issues that matter most to the student community. 
                 Problems are prioritized by urgency and community reports.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href="/submit">
+                <Link href="/submit-ai">
                   <Button size="lg" className="gap-2" data-testid="button-submit-problem">
                     Submit a Problem
                     <ChevronRight className="h-4 w-4" />
@@ -119,15 +120,11 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-4">
               <Card className="p-6 text-center min-w-[140px]">
-                <div className="text-3xl font-bold text-primary" data-testid="stat-total">
-                  {stats.total}
-                </div>
+                <div className="text-3xl font-bold text-primary" data-testid="stat-total">{stats.total}</div>
                 <div className="text-sm text-muted-foreground">Active Issues</div>
               </Card>
               <Card className="p-6 text-center min-w-[140px]">
-                <div className="text-3xl font-bold text-primary">
-                  {totalReports}
-                </div>
+                <div className="text-3xl font-bold text-primary">{totalReports}</div>
                 <div className="text-sm text-muted-foreground">Total Reports</div>
               </Card>
             </div>
@@ -146,35 +143,28 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-orange-50">
                   <AlertCircle className="h-5 w-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-orange-600">
-                    {stats.urgent + stats.critical + stats.emergency}
-                  </p>
+                  <p className="text-2xl font-bold text-orange-600">{stats.urgent + stats.critical + stats.emergency}</p>
                   <p className="text-xs text-muted-foreground">Urgent+</p>
                 </div>
               </CardContent>
             </Card>
-
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-red-50">
                   <Flame className="h-5 w-5 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-red-600">
-                    {stats.critical + stats.emergency}
-                  </p>
+                  <p className="text-2xl font-bold text-red-600">{stats.critical + stats.emergency}</p>
                   <p className="text-xs text-muted-foreground">Critical+</p>
                 </div>
               </CardContent>
             </Card>
-
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-green-50">
@@ -199,16 +189,11 @@ export default function Home() {
               <div className="lg:sticky lg:top-24 space-y-6">
                 <div className="flex items-center gap-2">
                   <Filter className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Filters
-                  </h3>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Filters</h3>
                 </div>
-
                 <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-700 mb-2 block">
-                      Urgency Level
-                    </label>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">Urgency Level</label>
                     <Select value={urgencyFilter} onValueChange={setUrgencyFilter}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select urgency" />
@@ -223,11 +208,8 @@ export default function Home() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div>
-                    <label className="text-sm font-medium text-gray-700 mb-2 block">
-                      Status
-                    </label>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select status" />
@@ -240,23 +222,12 @@ export default function Home() {
                       </SelectContent>
                     </Select>
                   </div>
-
-                  {(urgencyFilter !== "all" || statusFilter !== "all") && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => {
-                        setUrgencyFilter("all");
-                        setStatusFilter("all");
-                      }}
-                    >
+                  {hasFilters && (
+                    <Button variant="ghost" size="sm" className="w-full" onClick={() => { setUrgencyFilter("all"); setStatusFilter("all"); }}>
                       Clear filters
                     </Button>
                   )}
                 </div>
-
-                {/* Stats Summary */}
                 <div className="pt-4 border-t">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">Summary</h4>
                   <div className="space-y-2 text-sm">
@@ -289,7 +260,7 @@ export default function Home() {
                   </p>
                 </div>
                 <span className="text-sm text-muted-foreground">
-                  {filteredComplaints?.length || 0} issues
+                  {filteredComplaints.length} issue{filteredComplaints.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
@@ -321,12 +292,10 @@ export default function Home() {
                     <p className="text-muted-foreground mb-4 max-w-md">
                       Please try refreshing the page or check back later.
                     </p>
-                    <Button onClick={() => window.location.reload()}>
-                      Refresh Page
-                    </Button>
+                    <Button onClick={() => window.location.reload()}>Refresh Page</Button>
                   </CardContent>
                 </Card>
-              ) : filteredComplaints && filteredComplaints.length > 0 ? (
+              ) : filteredComplaints.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {filteredComplaints.map((complaint) => (
                     <ComplaintCard key={complaint.id} complaint={complaint} />
@@ -337,16 +306,12 @@ export default function Home() {
                   <CardContent className="flex flex-col items-center justify-center text-center">
                     <Users className="h-12 w-12 text-muted-foreground mb-4" />
                     <h3 className="text-lg font-semibold mb-2">
-                      {urgencyFilter !== "all" || statusFilter !== "all"
-                        ? "No matching issues"
-                        : "No issues yet"}
+                      {hasFilters ? "No matching issues" : "No issues yet"}
                     </h3>
                     <p className="text-muted-foreground mb-4 max-w-md">
-                      {urgencyFilter !== "all" || statusFilter !== "all"
-                        ? "Try adjusting your filters to see more campus issues."
-                        : "Be the first to report a campus issue and make a difference!"}
+                      {hasFilters ? "Try adjusting your filters to see more campus issues." : "Be the first to report a campus issue and make a difference!"}
                     </p>
-                    <Link href="/submit">
+                    <Link href="/submit-ai">
                       <Button className="gap-2">
                         <Plus className="h-4 w-4" />
                         Submit a Problem

@@ -159,7 +159,17 @@ export function registerComplaintRoutes(app: Express) {
     async (req: CollegeRequest & { body: any }, res) => {
       try {
         const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
-        const stats = await storage.getAdminStats();
+        const rawStats = await storage.getAdminStats();
+
+        // Map to frontend-expected keys
+        const stats = {
+          total: rawStats.totalComplaints,
+          urgent: rawStats.urgentCount,
+          critical: rawStats.criticalCount,
+          emergency: rawStats.emergencyCount,
+          solved: rawStats.solvedComplaints,
+        };
+
         res.json({ complaints: complaintsData, stats });
       } catch (error) {
         console.error("Leaderboard error:", error);
