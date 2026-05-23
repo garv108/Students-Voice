@@ -312,6 +312,7 @@ if (process.env.NODE_ENV === "development" && process.env.ENABLE_MOCK_ENDPOINTS 
 const httpServer = createServer(app);
 
 registerRoutes(httpServer, app);
+registerAIChatRoutes(app);   // ✅ now before error handlers
 
 // Global error handler
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
@@ -340,6 +341,3 @@ httpServer.listen(PORT, () => {
   console.log(`🍪 Cookie secure: ${sessionConfig.cookie?.secure}`);
   console.log(`🍪 Cookie sameSite: ${sessionConfig.cookie?.sameSite}`);
 });
-
-// ... after other route registrations
-registerAIChatRoutes(app);
