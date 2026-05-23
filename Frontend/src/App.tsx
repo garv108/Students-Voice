@@ -4,7 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AuthProvider, useAuth } from "./lib/auth";
-import { ErrorBoundary } from "@/components/error-boundary";   // <-- NEW
+import { ErrorBoundary } from "@/components/error-boundary";
+import { NetworkStatus } from "@/components/network-status";   // NEW
 import SubmitAI from "./pages/submit-ai";
 import MyComplaints from "./pages/my-complaints";
 import EditComplaint from "./pages/edit-complaint";
@@ -86,6 +87,7 @@ function App() {
           <ErrorBoundary>
             <Toaster />
             <Router />
+            <NetworkStatus />   {/* NEW */}
           </ErrorBoundary>
         </AuthProvider>
       </TooltipProvider>
