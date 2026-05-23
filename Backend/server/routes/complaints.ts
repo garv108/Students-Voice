@@ -265,9 +265,9 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
-  // ==================== NEW CHAT ENDPOINTS ====================
+  // ==================== CHAT ENDPOINTS ====================
 
-  /* GET MESSAGES FOR A COMPLAINT (admin or complaint owner) */
+  /* GET MESSAGES FOR A COMPLAINT */
   app.get(
     "/api/complaints/:id/messages",
     requireCollege,
@@ -300,7 +300,7 @@ export function registerComplaintRoutes(app: Express) {
     async (req: CollegeRequest, res) => {
       try {
         const id = (req as any).params.id;
-        const { message } = req.body;
+        const message = (req as any).body?.message;       // FIXED: cast to any
         const userId = (req as any).session.userId;
         const user = req.user;
 
