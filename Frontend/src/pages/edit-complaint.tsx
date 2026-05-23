@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
 export default function EditComplaint() {
@@ -171,9 +171,11 @@ export default function EditComplaint() {
 
             <div className="flex gap-3 pt-4">
               <Button onClick={() => handleSave("pending")} disabled={updateMutation.isPending}>
+                {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Submit Complaint
               </Button>
               <Button variant="outline" onClick={() => handleSave("draft")} disabled={updateMutation.isPending}>
+                {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save as Draft
               </Button>
               <Button variant="ghost" onClick={() => setLocation("/my-complaints")}>

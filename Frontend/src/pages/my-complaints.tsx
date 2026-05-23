@@ -18,6 +18,7 @@ import {
   Archive,
   MessageCircle,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -173,7 +174,12 @@ export default function MyComplaints() {
                               onClick={() => withdrawMutation.mutate(complaint.id)}
                               disabled={withdrawMutation.isPending}
                             >
-                              <Archive className="h-4 w-4" /> Withdraw
+                              {withdrawMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Archive className="h-4 w-4" />
+                              )}
+                              Withdraw
                             </Button>
                           )}
 
@@ -192,7 +198,12 @@ export default function MyComplaints() {
                                     onClick={() => reopenMutation.mutate(complaint.id)}
                                     disabled={reopenMutation.isPending}
                                   >
-                                    <RefreshCw className="h-4 w-4" /> Re‑raise
+                                    {reopenMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="h-4 w-4" />
+                                    )}
+                                    Re‑raise
                                   </Button>
                                 );
                               }
