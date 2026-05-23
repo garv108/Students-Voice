@@ -115,6 +115,7 @@ export function registerComplaintRoutes(app: Express) {
           clusterId: cluster?.id || null,
           likesCount: 0,
           dislikesCount: 0,
+          withdrawnAt: null,
         });
 
         if (cluster) {
@@ -302,11 +303,56 @@ export function registerComplaintRoutes(app: Express) {
           return res.status(403).json({ message: "You can only withdraw your own complaints" });
         }
 
-        await storage.updateComplaint(id, { status: "withdrawn" });
+        await storage.updateComplaint(id, {
+          status: "withdrawn",
+          withdrawnAt: new Date(),   // NEW
+        } as any);
         res.json({ success: true });
       } catch (error) {
         console.error("Withdraw error:", error);
         res.status(500).json({ message: "Failed to withdraw complaint" });
+      }
+    }
+  );
+
+  /* RE-RAISE (undo withdraw within 48h) */
+  app.post(
+    "/api/complaints/:id/reopen",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const id = (req as any).params.id;
+        const userId = (req as any).session.userId;
+        const user = req.user;
+
+        const complaint = await storage.getComplaint(id);
+        if (!complaint) return res.status(404).json({ message: "Complaint not found" });
+
+        if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
+          return res.status(403).json({ message: "You can only re-raise your own complaints" });
+        }
+
+        if (complaint.status !== "withdrawn") {
+          return res.status(400).json({ message: "Only withdrawn complaints can be re-raised" });
+        }
+
+        const withdrawnAt = complaint.withdrawnAt ? new Date(complaint.withdrawnAt) : null;
+        const now = new Date();
+        const hoursSince = withdrawnAt ? (now.getTime() - withdrawnAt.getTime()) / (1000 * 60 * 60) : Infinity;
+
+        if (hoursSince > 48) {
+          return res.status(400).json({ message: "Re-raise period (48 hours) has expired" });
+        }
+
+        await storage.updateComplaint(id, {
+          status: "pending",
+          withdrawnAt: null,
+        } as any);
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Re-raise error:", error);
+        res.status(500).json({ message: "Failed to re-raise complaint" });
       }
     }
   );

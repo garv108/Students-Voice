@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Archive,
   MessageCircle,
+  RefreshCw,
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -49,6 +50,20 @@ export default function MyComplaints() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to withdraw", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/complaints/${id}/reopen`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/my-complaints"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      toast({ title: "Complaint re-raised. It is now pending again." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Cannot re-raise", description: err.message, variant: "destructive" });
     },
   });
 
@@ -134,12 +149,12 @@ export default function MyComplaints() {
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           {complaint.status === "draft" ? (
-                            <Link href={`/edit-complaint/${complaint.id}`}>   {/* FIXED */}
+                            <Link href={`/edit-complaint/${complaint.id}`}>
                               <Button variant="outline" size="sm" className="gap-1">
                                 <FileEdit className="h-4 w-4" /> Edit
                               </Button>
                             </Link>
-                          ) : (
+                          ) : complaint.status !== "withdrawn" ? (
                             <Button
                               variant="outline"
                               size="sm"
@@ -148,8 +163,9 @@ export default function MyComplaints() {
                             >
                               <MessageCircle className="h-4 w-4" /> Chat
                             </Button>
-                          )}
-                          {complaint.status !== "withdrawn" && (
+                          ) : null}
+
+                          {complaint.status !== "withdrawn" && complaint.status !== "draft" && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -159,6 +175,29 @@ export default function MyComplaints() {
                             >
                               <Archive className="h-4 w-4" /> Withdraw
                             </Button>
+                          )}
+
+                          {/* Re-raise button for recently withdrawn complaints */}
+                          {complaint.status === "withdrawn" && (
+                            (() => {
+                              const withdrawnAt = complaint.withdrawnAt ? new Date(complaint.withdrawnAt) : null;
+                              const now = new Date();
+                              const hoursAgo = withdrawnAt ? (now.getTime() - withdrawnAt.getTime()) / (1000 * 60 * 60) : Infinity;
+                              if (hoursAgo <= 48) {
+                                return (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-green-600 border-green-600 hover:bg-green-50 gap-1"
+                                    onClick={() => reopenMutation.mutate(complaint.id)}
+                                    disabled={reopenMutation.isPending}
+                                  >
+                                    <RefreshCw className="h-4 w-4" /> Re‑raise
+                                  </Button>
+                                );
+                              }
+                              return null;
+                            })()
                           )}
                         </div>
                       </div>

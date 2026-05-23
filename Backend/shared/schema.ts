@@ -89,7 +89,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   reactions: many(reactions),
   abuseLogs: many(abuseLogs),
   sessions: many(userSessions),
-  complaintMessages: many(complaintMessages),   // add this
+  complaintMessages: many(complaintMessages),
 }));
 
 export const complaints = pgTable("complaints", {
@@ -112,6 +112,7 @@ export const complaints = pgTable("complaints", {
   likesCount: integer("likes_count").notNull().default(0),
   dislikesCount: integer("dislikes_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  withdrawnAt: timestamp("withdrawn_at"),   // ← ADDED
 });
 
 export const complaintsRelations = relations(complaints, ({ one, many }) => ({
@@ -128,10 +129,9 @@ export const complaintsRelations = relations(complaints, ({ one, many }) => ({
     fields: [complaints.clusterId],
     references: [clusterGroups.id],
   }),
-  messages: many(complaintMessages),   // add this
+  messages: many(complaintMessages),
 }));
 
-// NEW TABLE
 export const complaintMessages = pgTable("complaint_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   complaintId: varchar("complaint_id").notNull().references(() => complaints.id, { onDelete: "cascade" }),
@@ -281,8 +281,8 @@ export type InsertReaction = z.infer<typeof insertReactionSchema>;
 export type Like = typeof likes.$inferSelect;
 export type AbuseLog = typeof abuseLogs.$inferSelect;
 export type ClusterGroup = typeof clusterGroups.$inferSelect;
-export type ComplaintMessage = typeof complaintMessages.$inferSelect;          // NEW
-export type InsertComplaintMessage = typeof complaintMessages.$inferInsert;    // NEW
+export type ComplaintMessage = typeof complaintMessages.$inferSelect;
+export type InsertComplaintMessage = typeof complaintMessages.$inferInsert;
 export type VerifyEmail = z.infer<typeof verifyEmailSchema>;
 export type ResendVerification = z.infer<typeof resendVerificationSchema>;
 
