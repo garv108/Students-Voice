@@ -168,13 +168,13 @@ export function registerComplaintRoutes(app: Express) {
     }
   );
 
-  /* EXPLORE (public filtered list) */   // ← NEW ROUTE
+  /* EXPLORE (public filtered list) */
   app.get(
     "/api/complaints/explore",
     requireCollege,
     async (req: CollegeRequest, res) => {
       try {
-        const query = req.query as any;
+        const query = (req as any).query;   // FIXED: cast to any for query params
         const complaints = await storage.getExploreComplaints({
           search: query.search,
           category: query.category,
