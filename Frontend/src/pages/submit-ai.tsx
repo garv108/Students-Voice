@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Loader2, FileEdit } from "lucide-react";
+import { Send, Loader2, FileEdit, Trash2 } from "lucide-react";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -30,25 +30,65 @@ interface ComplaintDraft {
   severity: string;
 }
 
+const STORAGE_KEY = "ai_complaint_chat_messages";
+
 export default function SubmitAI() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is.",
-    },
-  ]);
+  // Load messages from localStorage (or use default welcome)
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      // ignore corrupt data
+    }
+    return [
+      {
+        role: "assistant",
+        content:
+          "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is.",
+      },
+    ];
+  });
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sufficientInfo, setSufficientInfo] = useState(false);
   const [draft, setDraft] = useState<ComplaintDraft | null>(null);
   const [editingDraft, setEditingDraft] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch (e) {
+      // ignore quota errors
+    }
+  }, [messages]);
+
+  const clearChat = () => {
+    setMessages([
+      {
+        role: "assistant",
+        content:
+          "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is.",
+      },
+    ]);
+    setSufficientInfo(false);
+    setDraft(null);
+    setEditingDraft(false);
+    toast({ title: "Chat cleared" });
+  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -258,9 +298,14 @@ export default function SubmitAI() {
               Answer a few questions and we'll draft your complaint.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setLocation("/submit")}>
-            Direct Submission
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setLocation("/submit")}>
+              Direct Submission
+            </Button>
+            <Button variant="ghost" size="icon" title="Clear chat" onClick={clearChat}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Chat card – fills remaining space */}
