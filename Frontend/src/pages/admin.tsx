@@ -457,14 +457,6 @@ export default function Admin() {
 
               {/* ===== ANALYTICS TAB ===== */}
               <TabsContent value="analytics" className="space-y-6">
-                {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold">{analytics?.total || 0}</div><div className="text-sm text-muted-foreground">Total Complaints</div></CardContent></Card>
-                  <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-green-600">{analytics?.byStatus?.find((s: any) => s.name === 'solved')?.count || 0}</div><div className="text-sm text-muted-foreground">Resolved</div></CardContent></Card>
-                  <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-orange-600">{analytics?.byStatus?.filter((s: any) => s.name === 'pending' || s.name === 'in_progress').reduce((a: number, s: any) => a + s.count, 0) || 0}</div><div className="text-sm text-muted-foreground">Active</div></CardContent></Card>
-                  <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-destructive">{analytics?.bySeverity?.filter((s: any) => s.name === 'critical' || s.name === 'worst').reduce((a: number, s: any) => a + s.count, 0) || 0}</div><div className="text-sm text-muted-foreground">Critical</div></CardContent></Card>
-                </div>
-
                 {/* Charts Row */}
                 <div className="grid md:grid-cols-2 gap-6">
                   {/* Complaints by Month */}
