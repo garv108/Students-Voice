@@ -1,7 +1,7 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { detectProfanity, getBanExpiration } from "../profanity";
-import { analyzeComplaint } from "../gemini";
+import { analyzeComplaint, extractKeywords, calculateKeywordOverlap } from "../gemini";  // <-- ensure these are exported
 import { insertComplaintSchema } from "../../shared/schema";
 import { z } from "zod";
 import { requireCollege, CollegeRequest } from "../middleware/college";
@@ -198,7 +198,7 @@ app.get(
     requireCollege,
     async (req: CollegeRequest, res) => {
       try {
-        const query = (req as any).query;   // FIXED: cast to any for query params
+        const query = (req as any).query;
         const complaints = await storage.getExploreComplaints({
           search: query.search,
           category: query.category,
@@ -281,7 +281,6 @@ app.get(
         const complaint = await storage.getComplaint(id);
         if (!complaint) return res.status(404).json({ message: "Complaint not found" });
 
-        // Only the owner or admin/moderator can view the full complaint
         if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
           return res.status(403).json({ message: "Access denied" });
         }
@@ -307,12 +306,10 @@ app.get(
         const complaint = await storage.getComplaint(id);
         if (!complaint) return res.status(404).json({ message: "Complaint not found" });
 
-        // Only the owner can edit their own complaint (or admin)
         if (complaint.userId !== userId && user?.role !== "admin" && user?.role !== "moderator") {
           return res.status(403).json({ message: "You can only edit your own complaints" });
         }
 
-        // Only allow editing if status is draft or pending (or admin)
         if (complaint.status !== "draft" && complaint.status !== "pending" && user?.role !== "admin" && user?.role !== "moderator") {
           return res.status(400).json({ message: "Only draft or pending complaints can be edited" });
         }
@@ -320,7 +317,7 @@ app.get(
         const body = (req as any).body || {};
         const updates: any = {};
         if (body.originalText !== undefined) updates.originalText = body.originalText;
-        if (body.description !== undefined) updates.originalText = body.description; // fallback
+        if (body.description !== undefined) updates.originalText = body.description;
         if (body.category !== undefined) updates.category = body.category;
         if (body.severity !== undefined) updates.severity = body.severity;
         if (body.status !== undefined) updates.status = body.status;
@@ -421,6 +418,44 @@ app.get(
       } catch (error) {
         console.error("Delete error:", error);
         res.status(500).json({ message: "Failed" });
+      }
+    }
+  );
+
+  // ==================== NEW: SIMILAR COMPLAINTS ====================
+  /* FIND SIMILAR COMPLAINTS (used before draft generation or in admin) */
+  app.get(
+    "/api/complaints/similar",
+    requireCollege,
+    async (req: CollegeRequest, res) => {
+      try {
+        const text = (req as any).query.text || "";
+        if (!text.trim()) return res.json([]);
+
+        // Extract keywords from the input text
+        const keywords = extractKeywords(text);
+        if (!keywords.length) return res.json([]);
+
+        // Get public (non-draft, non-withdrawn) complaints
+        const recentComplaints = await storage.getLeaderboardComplaints(req.collegeId!);
+
+        // Score each complaint by keyword overlap
+        const scored = recentComplaints.map(c => ({
+          complaint: c,
+          score: calculateKeywordOverlap(keywords, c.keywords || []),
+        }));
+
+        // Filter low overlap, sort by score, return top 3
+        const matches = scored
+          .filter(s => s.score >= 0.3)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+          .map(s => s.complaint);
+
+        res.json(matches);
+      } catch (error) {
+        console.error("Similar complaints error:", error);
+        res.status(500).json({ message: "Failed to find similar issues" });
       }
     }
   );

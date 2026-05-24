@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,7 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Loader2, FileEdit, Trash2, Mic, MicOff, RefreshCw, AlertTriangle } from "lucide-react";
+import {
+  Send, Loader2, FileEdit, Trash2, Mic, MicOff, RefreshCw, AlertTriangle, Search, ExternalLink
+} from "lucide-react";
+import type { Complaint } from "@shared/schema";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -63,6 +67,7 @@ export default function SubmitAI() {
   const [draft, setDraft] = useState<ComplaintDraft | null>(null);
   const [editingDraft, setEditingDraft] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [similarIssues, setSimilarIssues] = useState<Complaint[] | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Voice recognition state
@@ -115,7 +120,7 @@ export default function SubmitAI() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch (e) {}
   }, [messages]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, similarIssues]);
 
   const clearChat = () => {
     setMessages([{ role: "assistant", content: "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is." }]);
@@ -123,6 +128,7 @@ export default function SubmitAI() {
     setDraft(null);
     setEditingDraft(false);
     setRetryMessage(null);
+    setSimilarIssues(null);
     toast({ title: "Chat cleared" });
   };
 
@@ -133,6 +139,7 @@ export default function SubmitAI() {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setLoading(true);
     setRetryMessage(null);
+    setSimilarIssues(null); // reset when new message sent
 
     try {
       const response = await apiRequest("POST", "/api/complaints/ai-chat", {
@@ -156,6 +163,23 @@ export default function SubmitAI() {
     handleSendMessage();
   };
 
+  // ===== NEW: check for similar issues =====
+  const checkSimilarIssues = async () => {
+    setLoading(true);
+    try {
+      // Use the last user message as the search text
+      const lastUserMsg = [...messages].reverse().find(m => m.role === "user")?.content || "";
+      const res = await apiRequest("GET", `/api/complaints/similar?text=${encodeURIComponent(lastUserMsg)}`);
+      if (!res.ok) throw new Error("Failed to fetch similar issues");
+      const data = await res.json();
+      setSimilarIssues(data);
+    } catch (error) {
+      toast({ title: "Error", description: "Could not check for similar issues.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const generateDraft = async () => {
     setLoading(true);
     try {
@@ -163,7 +187,6 @@ export default function SubmitAI() {
       if (!response.ok) throw new Error("Draft generation failed");
       const data = await response.json();
       const draft = data.draft;
-      // Edge Case 6: validate draft
       if (!draft || !draft.title || !draft.description) {
         setDraft(null);
         toast({ title: "Draft incomplete", description: "Please provide details manually.", variant: "destructive" });
@@ -181,7 +204,7 @@ export default function SubmitAI() {
 
   const submitComplaint = async (status: "pending" | "draft") => {
     if (!draft) return;
-    setLoading(true); // <-- added to prevent double-click during submission
+    setLoading(true);
     try {
       const response = await apiRequest("POST", "/api/complaints", {
         description: draft.description,
@@ -192,11 +215,10 @@ export default function SubmitAI() {
       });
       if (!response.ok) {
         const err = await response.json();
-        // Handle duplicate (409) specifically
         if (response.status === 409) {
           toast({ title: "Duplicate submission", description: err.message, variant: "destructive" });
           setLoading(false);
-          return; // stay on page so user can edit
+          return;
         }
         throw new Error(err.message || "Submission failed");
       }
@@ -212,7 +234,7 @@ export default function SubmitAI() {
     }
   };
 
-  // Draft review view (same as before, unchanged)
+  // Draft review view
   if (draft && editingDraft) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -321,10 +343,42 @@ export default function SubmitAI() {
 
           <div className="border-t p-3 space-y-3 flex-shrink-0">
             {sufficientInfo && !draft && (
-              <div className="flex justify-center">
-                <Button onClick={generateDraft} disabled={loading} className="gap-2">
-                  <FileEdit className="h-4 w-4" /> Generate Draft
-                </Button>
+              <div className="space-y-2">
+                <div className="flex justify-center gap-2">
+                  <Button onClick={generateDraft} disabled={loading} className="gap-2">
+                    <FileEdit className="h-4 w-4" /> Generate Draft
+                  </Button>
+                  {!similarIssues && (
+                    <Button variant="outline" onClick={checkSimilarIssues} disabled={loading} className="gap-2">
+                      <Search className="h-4 w-4" /> Check Similar Issues
+                    </Button>
+                  )}
+                </div>
+                {/* Similar issues panel */}
+                {similarIssues && similarIssues.length > 0 && (
+                  <Card className="p-3 bg-muted/30">
+                    <p className="text-sm font-medium mb-2">Similar issues found:</p>
+                    {similarIssues.map((issue) => (
+                      <div key={issue.id} className="flex items-center justify-between py-1 border-b last:border-b-0">
+                        <div className="flex-1 text-sm truncate">
+                          <span className="font-medium">{issue.summary || issue.originalText.slice(0, 60)}</span>
+                          <Badge variant="outline" className="ml-2 text-xs">{issue.status}</Badge>
+                        </div>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/complaint/${issue.id}`} target="_blank">
+                            <ExternalLink className="h-3 w-3 mr-1" /> View
+                          </Link>
+                        </Button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground mt-2">
+                      If one matches your issue, you can upvote it. Otherwise, continue to create your own.
+                    </p>
+                  </Card>
+                )}
+                {similarIssues && similarIssues.length === 0 && (
+                  <p className="text-sm text-center text-muted-foreground">No similar issues found. You can proceed.</p>
+                )}
               </div>
             )}
 
