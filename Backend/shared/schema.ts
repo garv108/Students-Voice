@@ -112,7 +112,8 @@ export const complaints = pgTable("complaints", {
   likesCount: integer("likes_count").notNull().default(0),
   dislikesCount: integer("dislikes_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  withdrawnAt: timestamp("withdrawn_at"),   // ← ADDED
+  withdrawnAt: timestamp("withdrawn_at"),
+  slaDeadline: timestamp("sla_deadline"),   // ← NEW: expected resolution deadline
 });
 
 export const complaintsRelations = relations(complaints, ({ one, many }) => ({

@@ -1,7 +1,7 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { detectProfanity, getBanExpiration } from "../profanity";
-import { analyzeComplaint, extractKeywords, calculateKeywordOverlap } from "../gemini";  // <-- ensure these are exported
+import { analyzeComplaint, extractKeywords, calculateKeywordOverlap } from "../gemini";
 import { insertComplaintSchema } from "../../shared/schema";
 import { z } from "zod";
 import { requireCollege, CollegeRequest } from "../middleware/college";
@@ -33,6 +33,18 @@ async function requireAdmin(
   }
 
   next();
+}
+
+// Helper to compute SLA deadline based on urgency
+function computeSLADeadline(urgency: string): Date {
+  const now = new Date();
+  const days = {
+    emergency: 1,
+    critical: 3,
+    urgent: 7,
+    normal: 15,
+  }[urgency] || 15;
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 export function registerComplaintRoutes(app: Express) {
@@ -130,6 +142,7 @@ export function registerComplaintRoutes(app: Express) {
           likesCount: 0,
           dislikesCount: 0,
           withdrawnAt: null,
+          slaDeadline: computeSLADeadline("normal"), // new field
         });
 
         if (cluster) {
@@ -146,7 +159,7 @@ export function registerComplaintRoutes(app: Express) {
       }
     }
   );
-
+  
   /* MY COMPLAINTS */
   app.get(
     "/api/my-complaints",

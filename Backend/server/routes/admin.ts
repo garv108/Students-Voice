@@ -27,17 +27,15 @@ async function requireAdmin(
     });
   }
 
-  // Attach user to request for later use
   (req as any).user = user;
   next();
 }
 
 export function registerAdminRoutes(app: Express) {
 
-  // DASHBOARD (FIXED - includes users and abuse logs)
+  // DASHBOARD
   app.get("/api/admin/dashboard", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
-      // Use the same methods that were working in your original code
       const stats = await storage.getAdminStats();
       const complaints = await storage.getLeaderboardComplaints();
       const users = await storage.getAllUsers();
@@ -83,21 +81,19 @@ export function registerAdminRoutes(app: Express) {
     try {
       const { id } = req.params;
       const { role } = req.body;
-
       await storage.updateUserRole(id, role);
       res.json({ success: true });
-
     } catch (error) {
       console.error("Update role error:", error);
       res.status(500).json({ message: "Failed to update role" });
     }
   });
 
-  // BAN USER (aligned with frontend)
+  // BAN USER
   app.put("/api/admin/users/:id/ban", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const userId = req.params.id;
-      const { hours } = req.body;   // frontend sends { hours: 48 }
+      const { hours } = req.body;
       const hoursNum = parseInt(hours) || 48;
       const banUntil = new Date(Date.now() + hoursNum * 60 * 60 * 1000);
       await storage.updateUserBan(userId, banUntil);
@@ -108,7 +104,7 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
-  // UNBAN USER (aligned with frontend)
+  // UNBAN USER
   app.put("/api/admin/users/:id/unban", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const userId = req.params.id;
@@ -144,19 +140,89 @@ export function registerAdminRoutes(app: Express) {
   app.delete("/api/admin/complaints/bulk", requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { ids } = req.body;
-
-      // Assuming your storage has a bulk delete method
-      // If not, you can do a loop
       for (const id of ids) {
         await storage.deleteComplaint(id);
       }
-
       res.json({ success: true });
-
     } catch (error) {
       console.error("Bulk delete error:", error);
       res.status(500).json({ message: "Failed to delete complaints" });
     }
   });
 
+  // ==================== ANALYTICS ENDPOINT ====================
+  app.get("/api/admin/analytics", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const allComplaints = await storage.getComplaints();
+
+      // Group by month
+      const byMonth: Record<string, number> = {};
+      const byCategory: Record<string, number> = {};
+      const bySeverity: Record<string, number> = {};
+      const byStatus: Record<string, number> = {};
+
+      allComplaints.forEach(c => {
+        const month = new Date(c.createdAt).toLocaleString('default', { month: 'short', year: '2-digit' });
+        byMonth[month] = (byMonth[month] || 0) + 1;
+        const cat = c.category || "Other";
+        byCategory[cat] = (byCategory[cat] || 0) + 1;
+        bySeverity[c.severity || "average"] = (bySeverity[c.severity || "average"] || 0) + 1;
+        byStatus[c.status] = (byStatus[c.status] || 0) + 1;
+      });
+
+      res.json({
+        total: allComplaints.length,
+        byMonth: Object.entries(byMonth).map(([name, count]) => ({ name, count })),
+        byCategory: Object.entries(byCategory).map(([name, count]) => ({ name, count })),
+        bySeverity: Object.entries(bySeverity).map(([name, count]) => ({ name, count })),
+        byStatus: Object.entries(byStatus).map(([name, count]) => ({ name, count })),
+      });
+    } catch (error) {
+      console.error("Analytics error:", error);
+      res.status(500).json({ message: "Failed to load analytics" });
+    }
+  });
+
+  // ==================== AI INSIGHTS ENDPOINT ====================
+  app.post("/api/admin/insights", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(400).json({ message: "AI service not configured" });
+      }
+
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+
+      const complaints = await storage.getComplaints();
+      const recentComplaints = complaints.slice(0, 50);
+      const complaintTexts = recentComplaints.map(c => `[${c.status}] ${c.originalText.slice(0, 200)}`).join("\n");
+
+      const prompt = `
+You are an analyst for a student grievance portal. Review the following recent complaints and provide:
+1. Top 3 recurring issues or patterns (with count if possible)
+2. Any notable spikes in specific categories or locations
+3. A one-sentence summary of the overall complaint health
+
+Complaints:
+${complaintTexts}
+
+Return ONLY valid JSON:
+{
+  "patterns": [{ "issue": "string", "count": number, "description": "string" }],
+  "spikes": [{ "category": "string", "note": "string" }],
+  "summary": "string"
+}`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const insights = jsonMatch ? JSON.parse(jsonMatch[0]) : { patterns: [], spikes: [], summary: "Could not generate insights." };
+
+      res.json(insights);
+    } catch (error: any) {
+      console.error("Insights error:", error);
+      res.status(500).json({ message: "Failed to generate insights" });
+    }
+  });
 }
