@@ -1,4 +1,9 @@
-const PdfPrinter = require("pdfmake");
+// @ts-ignore – types may not perfectly match the runtime export
+import PdfPrinter from "pdfmake";
+
+// If the default import is not a constructor, fall back to .default
+const Printer = typeof PdfPrinter === "function" ? PdfPrinter : (PdfPrinter as any).default;
+
 const fonts = {
   Roboto: {
     normal: "Helvetica",
@@ -8,7 +13,7 @@ const fonts = {
   },
 };
 
-const printer = new PdfPrinter(fonts);
+const printer = new Printer(fonts);
 
 interface ComplaintSummary {
   status: string;
@@ -57,7 +62,7 @@ function computeReportData(complaints: ComplaintSummary[]): ReportData {
     categoryBreakdown,
     severityBreakdown,
     urgencyBreakdown,
-    avgResolutionDays: "N/A", // will update when solvedAt tracking is added
+    avgResolutionDays: "N/A",
   };
 }
 
