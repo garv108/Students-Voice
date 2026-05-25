@@ -57,7 +57,7 @@ import {
 import {
   Users, AlertTriangle, Trash2, Pencil, CheckCircle, ShieldAlert, UserX,
   Search, RefreshCw, MessageSquare, Flame, Siren, AlertCircle, Clock,
-  MessageCircle, Loader2, BarChart3, Sparkles
+  MessageCircle, Loader2, BarChart3, Sparkles, FileDown
 } from "lucide-react";
 import type { Complaint, User, AbuseLog } from "@shared/schema";
 
@@ -82,6 +82,14 @@ interface AdminData {
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
+const REPORT_TYPES = [
+  { key: "ugc-annual", label: "UGC Annual Grievance Report", description: "Under UGC Regulations, 2023" },
+  { key: "naac-ssr", label: "NAAC SSR – Criterion 5.1.4", description: "Student Grievance Redressal Mechanism" },
+  { key: "icc-annual", label: "ICC Annual Report (POSH)", description: "Sexual Harassment of Women at Workplace Act, 2013" },
+  { key: "anti-ragging", label: "Anti‑Ragging Committee Report", description: "UGC Regulations, 2009" },
+  { key: "sc-st-cell", label: "SC/ST Cell Grievance Report", description: "UGC Equity Regulations, 2025" },
+];
+
 export default function Admin() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -103,6 +111,9 @@ export default function Admin() {
   const [analytics, setAnalytics] = useState<any>(null);
   const [insights, setInsights] = useState<any>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+
+  // ===== REPORT DOWNLOAD STATE =====
+  const [downloadingReport, setDownloadingReport] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -207,6 +218,14 @@ export default function Admin() {
     },
     onError: (error: any) => toast({ title: "Failed to unban user", description: error.message, variant: "destructive" }),
   });
+
+  // Download report handler
+  const downloadReport = (reportType: string) => {
+    setDownloadingReport(reportType);
+    // Open PDF in new tab (also triggers download)
+    window.open(`/api/admin/reports/${reportType}`, "_blank");
+    setTimeout(() => setDownloadingReport(null), 2000);
+  };
 
   if (authLoading || isAuthorized === null) {
     return (
@@ -337,10 +356,12 @@ export default function Admin() {
                 <TabsTrigger value="abuse" className="gap-2"><AlertTriangle className="h-4 w-4" /> Abuse Logs {stats.abuseLogs > 0 && <Badge variant="destructive" className="ml-1">{stats.abuseLogs}</Badge>}</TabsTrigger>
                 <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" /> Users</TabsTrigger>
                 <TabsTrigger value="analytics" className="gap-2"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
+                <TabsTrigger value="reports" className="gap-2"><FileDown className="h-4 w-4" /> Reports</TabsTrigger>
               </TabsList>
 
               {/* ===== COMPLAINTS TAB ===== */}
               <TabsContent value="complaints" className="space-y-4">
+                {/* ... unchanged complaints table ... */}
                 <Card>
                   <CardHeader>
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -388,6 +409,7 @@ export default function Admin() {
 
               {/* ===== ABUSE LOGS TAB ===== */}
               <TabsContent value="abuse" className="space-y-4">
+                {/* ... unchanged abuse logs ... */}
                 <Card>
                   <CardHeader><CardTitle>Abuse Logs</CardTitle><CardDescription>Review flagged content and manage user violations</CardDescription></CardHeader>
                   <CardContent>
@@ -411,6 +433,7 @@ export default function Admin() {
 
               {/* ===== USERS TAB ===== */}
               <TabsContent value="users" className="space-y-4">
+                {/* ... unchanged users table with warnings ... */}
                 <Card>
                   <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user roles and account status</CardDescription></CardHeader>
                   <CardContent>
@@ -421,7 +444,7 @@ export default function Admin() {
                             <TableHead>Username</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Role</TableHead>
-                            <TableHead>Warnings</TableHead>    {/* NEW */}
+                            <TableHead>Warnings</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Joined</TableHead>
                             <TableHead className="w-32">Actions</TableHead>
@@ -430,7 +453,7 @@ export default function Admin() {
                         <TableBody>
                           {data?.users?.map((user) => {
                             const isBanned = user.bannedUntil && new Date(user.bannedUntil) > new Date();
-                            const warningCount = (user as any).warnings || 0;   // NEW
+                            const warningCount = (user as any).warnings || 0;
                             return (
                               <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.username}</TableCell>
@@ -441,7 +464,6 @@ export default function Admin() {
                                     <SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="moderator">Moderator</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
                                   </Select>
                                 </TableCell>
-                                {/* NEW: Warning count */}
                                 <TableCell>
                                   {warningCount > 0 ? (
                                     <Badge variant={warningCount >= 3 ? "destructive" : "secondary"}>
@@ -478,9 +500,8 @@ export default function Admin() {
 
               {/* ===== ANALYTICS TAB ===== */}
               <TabsContent value="analytics" className="space-y-6">
-                {/* Charts Row */}
+                {/* ... unchanged analytics charts and insights ... */}
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Complaints by Month */}
                   <Card>
                     <CardHeader><CardTitle>Complaints by Month</CardTitle></CardHeader>
                     <CardContent className="h-72">
@@ -495,8 +516,6 @@ export default function Admin() {
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
-
-                  {/* By Category Pie Chart */}
                   <Card>
                     <CardHeader><CardTitle>By Category</CardTitle></CardHeader>
                     <CardContent className="h-72">
@@ -512,8 +531,6 @@ export default function Admin() {
                     </CardContent>
                   </Card>
                 </div>
-
-                {/* AI Insights */}
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -555,6 +572,45 @@ export default function Admin() {
                     ) : (
                       <p className="text-muted-foreground text-center py-8">Click "Generate Insights" to analyze recent complaint patterns.</p>
                     )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ===== REPORTS TAB ===== */}
+              <TabsContent value="reports" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Download Compliance Reports</CardTitle>
+                    <CardDescription>
+                      Generate and download official PDF reports for regulatory submissions
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {REPORT_TYPES.map((report) => (
+                        <Card key={report.key} className="hover:shadow-md transition-shadow">
+                          <CardContent className="p-4 space-y-2">
+                            <FileDown className="h-8 w-8 text-primary" />
+                            <h3 className="font-semibold text-sm">{report.label}</h3>
+                            <p className="text-xs text-muted-foreground">{report.description}</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full mt-2"
+                              onClick={() => downloadReport(report.key)}
+                              disabled={downloadingReport === report.key}
+                            >
+                              {downloadingReport === report.key ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <FileDown className="h-4 w-4 mr-2" />
+                              )}
+                              Download PDF
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>
