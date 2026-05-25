@@ -1,6 +1,6 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { generateReport } from "../reports";
+import { generateReport, ReportType } from "../reports";
 import { requireCollege, CollegeRequest } from "../middleware/college";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -236,8 +236,10 @@ Return ONLY valid JSON:
     requireAdmin,
     async (req: CollegeRequest, res: Response) => {
       try {
-        const reportType = (req as any).params.type;   // <-- FIXED
-        const validTypes = ["ugc-annual", "naac-ssr", "icc-annual", "anti-ragging", "sc-st-cell"];
+        const reportType = (req as any).params.type as ReportType;
+        const validTypes: ReportType[] = [
+          "ugc-annual", "naac-ssr", "icc-annual", "anti-ragging", "sc-st-cell"
+        ];
         if (!validTypes.includes(reportType)) {
           return res.status(400).json({ message: "Invalid report type" });
         }
@@ -258,23 +260,18 @@ Return ONLY valid JSON:
           filtered = publicComplaints.filter(c => c.category === "Discrimination");
         }
 
-        // Get college name from settings
-        let collegeName = "Your Institution";
-        if (req.collegeId) {
-          const settings = await storage.getCollegeSettings(req.collegeId);
-          collegeName = settings?.name || collegeName;
-        }
-
-        // Build summary objects
+        // Build summary objects matching the new Complaint interface from reports.ts
         const summaries = filtered.map(c => ({
           status: c.status,
-          category: c.category,
-          severity: c.severity,
-          urgency: c.urgency,
+          category: c.category || "Other",         // ensure string, not null
+          severity: c.severity || "average",
+          urgency: c.urgency || "normal",
           createdAt: new Date(c.createdAt),
           solved: c.solved,
+          solvedAt: c.solvedAt ? new Date(c.solvedAt) : undefined,  // optional
         }));
 
+        const collegeName = (await storage.getCollegeSettings(req.collegeId!))?.name;
         const pdfBuffer = await generateReport(reportType, summaries, collegeName);
 
         res.setHeader("Content-Type", "application/pdf");
