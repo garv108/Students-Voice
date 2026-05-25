@@ -1,5 +1,7 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
+import { generateReport } from "../reports";
+import { requireCollege, CollegeRequest } from "../middleware/college";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!(req as any).session.userId) {
@@ -225,4 +227,66 @@ Return ONLY valid JSON:
       res.status(500).json({ message: "Failed to generate insights" });
     }
   });
+
+  // ==================== PDF REPORT DOWNLOAD ====================
+  app.get(
+    "/api/admin/reports/:type",
+    requireAuth,
+    requireCollege,       // <-- added to provide req.collegeId
+    requireAdmin,
+    async (req: CollegeRequest, res: Response) => {   // <-- typed as CollegeRequest
+      try {
+        const reportType = req.params.type;
+        const validTypes = ["ugc-annual", "naac-ssr", "icc-annual", "anti-ragging", "sc-st-cell"];
+        if (!validTypes.includes(reportType)) {
+          return res.status(400).json({ message: "Invalid report type" });
+        }
+
+        // Get all non-draft, non-withdrawn complaints
+        const allComplaints = await storage.getComplaints();
+        const publicComplaints = allComplaints.filter(
+          c => c.status !== "draft" && c.status !== "withdrawn"
+        );
+
+        // Optionally filter by category for specialised reports
+        let filtered = publicComplaints;
+        if (reportType === "icc-annual") {
+          filtered = publicComplaints.filter(c => c.category === "Harassment");
+        } else if (reportType === "anti-ragging") {
+          filtered = publicComplaints.filter(c => c.category === "Safety");
+        } else if (reportType === "sc-st-cell") {
+          filtered = publicComplaints.filter(c => c.category === "Discrimination");
+        }
+
+        // Get college name from settings
+        let collegeName = "Your Institution";
+        if (req.collegeId) {                             // <-- now available
+          const settings = await storage.getCollegeSettings(req.collegeId);
+          collegeName = settings?.name || collegeName;
+        }
+
+        // Build summary objects
+        const summaries = filtered.map(c => ({
+          status: c.status,
+          category: c.category,
+          severity: c.severity,
+          urgency: c.urgency,
+          createdAt: new Date(c.createdAt),
+          solved: c.solved,
+        }));
+
+        const pdfBuffer = await generateReport(reportType, summaries, collegeName);
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${reportType}-report-${Date.now()}.pdf"`
+        );
+        res.send(pdfBuffer);
+      } catch (error) {
+        console.error("Report generation error:", error);
+        res.status(500).json({ message: "Failed to generate report" });
+      }
+    }
+  );
 }

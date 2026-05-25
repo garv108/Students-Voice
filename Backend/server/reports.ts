@@ -1,0 +1,213 @@
+const PdfPrinter = require("pdfmake");
+const fonts = {
+  Roboto: {
+    normal: "Helvetica",
+    bold: "Helvetica-Bold",
+    italics: "Helvetica-Oblique",
+    bolditalics: "Helvetica-BoldOblique",
+  },
+};
+
+const printer = new PdfPrinter(fonts);
+
+interface ComplaintSummary {
+  status: string;
+  category: string | null;
+  severity: string | null;
+  urgency: string | null;
+  createdAt: Date;
+  solved: boolean;
+}
+
+interface ReportData {
+  total: number;
+  resolved: number;
+  pending: number;
+  inProgress: number;
+  categoryBreakdown: Record<string, number>;
+  severityBreakdown: Record<string, number>;
+  urgencyBreakdown: Record<string, number>;
+  avgResolutionDays: string;
+}
+
+function computeReportData(complaints: ComplaintSummary[]): ReportData {
+  const total = complaints.length;
+  const resolved = complaints.filter(c => c.solved || c.status === "solved").length;
+  const pending = complaints.filter(c => c.status === "pending").length;
+  const inProgress = complaints.filter(c => c.status === "in_progress").length;
+
+  const categoryBreakdown: Record<string, number> = {};
+  const severityBreakdown: Record<string, number> = {};
+  const urgencyBreakdown: Record<string, number> = {};
+
+  complaints.forEach(c => {
+    const cat = c.category || "Other";
+    categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+    const sev = c.severity || "average";
+    severityBreakdown[sev] = (severityBreakdown[sev] || 0) + 1;
+    const urg = c.urgency || "normal";
+    urgencyBreakdown[urg] = (urgencyBreakdown[urg] || 0) + 1;
+  });
+
+  return {
+    total,
+    resolved,
+    pending,
+    inProgress,
+    categoryBreakdown,
+    severityBreakdown,
+    urgencyBreakdown,
+    avgResolutionDays: "N/A", // will update when solvedAt tracking is added
+  };
+}
+
+function buildTable(data: Record<string, number>, title: string) {
+  const rows = Object.entries(data).map(([key, value]) => [key, value.toString()]);
+  if (rows.length === 0) rows.push(["No data", "0"]);
+  return {
+    style: "table",
+    table: {
+      headerRows: 1,
+      widths: ["*", "auto"],
+      body: [[title, "Count"], ...rows],
+    },
+    layout: "lightHorizontalLines",
+    margin: [0, 10, 0, 10],
+  };
+}
+
+export async function generateReport(
+  type: string,
+  complaints: ComplaintSummary[],
+  collegeName?: string
+): Promise<Buffer> {
+  const data = computeReportData(complaints);
+  const college = collegeName || "Your Institution";
+  const dateStr = new Date().toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  let title = "";
+  let subtitle = "";
+
+  switch (type) {
+    case "ugc-annual":
+      title = "UGC Annual Grievance Report";
+      subtitle = "Under UGC (Redressal of Grievances of Students) Regulations, 2023";
+      break;
+    case "naac-ssr":
+      title = "NAAC SSR – Criterion 5.1.4";
+      subtitle = "Student Grievance Redressal Mechanism";
+      break;
+    case "icc-annual":
+      title = "Internal Complaints Committee (ICC) Annual Report";
+      subtitle = "Under the Sexual Harassment of Women at Workplace Act, 2013";
+      break;
+    case "anti-ragging":
+      title = "Anti‑Ragging Committee Quarterly Report";
+      subtitle = "Under UGC Regulations on Curbing the Menace of Ragging, 2009";
+      break;
+    case "sc-st-cell":
+      title = "SC/ST Cell Grievance Report";
+      subtitle = "Under UGC Promotion of Equity in HEIs Regulations, 2025";
+      break;
+    default:
+      title = "Grievance Report";
+      subtitle = "";
+  }
+
+  const docDefinition: any = {
+    pageSize: "A4",
+    pageMargins: [40, 60, 40, 60],
+    header: {
+      text: college,
+      alignment: "center",
+      margin: [0, 20, 0, 0],
+      fontSize: 12,
+      bold: true,
+    },
+    footer: (currentPage: number, pageCount: number) => ({
+      text: `Page ${currentPage} of ${pageCount}`,
+      alignment: "center",
+      margin: [0, 0, 0, 10],
+    }),
+    content: [
+      { text: title, style: "title" },
+      { text: subtitle, style: "subtitle" },
+      { text: `Generated on: ${dateStr}`, style: "date" },
+      { text: "", margin: [0, 10] },
+
+      { text: "Summary Statistics", style: "sectionHeader" },
+      {
+        ul: [
+          `Total Complaints Received: ${data.total}`,
+          `Resolved: ${data.resolved}`,
+          `Pending: ${data.pending}`,
+          `In Progress: ${data.inProgress}`,
+          `Average Resolution Time: ${data.avgResolutionDays}`,
+        ],
+        margin: [10, 5, 0, 10],
+      },
+
+      { text: "Category‑wise Breakdown", style: "sectionHeader" },
+      buildTable(data.categoryBreakdown, "Category"),
+
+      { text: "Severity‑wise Breakdown", style: "sectionHeader" },
+      buildTable(data.severityBreakdown, "Severity"),
+
+      { text: "Urgency‑wise Breakdown", style: "sectionHeader" },
+      buildTable(data.urgencyBreakdown, "Urgency"),
+
+      { text: "", margin: [0, 20] },
+      {
+        text: "This report is auto‑generated by StudentVoice platform.",
+        style: "footerNote",
+      },
+    ],
+    styles: {
+      title: {
+        fontSize: 18,
+        bold: true,
+        alignment: "center",
+        margin: [0, 0, 0, 5],
+      },
+      subtitle: {
+        fontSize: 12,
+        italics: true,
+        alignment: "center",
+        margin: [0, 0, 0, 5],
+        color: "#555",
+      },
+      date: {
+        fontSize: 10,
+        alignment: "right",
+        margin: [0, 0, 0, 5],
+        color: "#888",
+      },
+      sectionHeader: {
+        fontSize: 14,
+        bold: true,
+        margin: [0, 15, 0, 5],
+      },
+      table: { margin: [0, 5, 0, 10] },
+      footerNote: {
+        fontSize: 8,
+        italics: true,
+        alignment: "center",
+        color: "#999",
+      },
+    },
+  };
+
+  const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    pdfDoc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+    pdfDoc.on("error", reject);
+    pdfDoc.end();
+  });
+}
