@@ -11,7 +11,9 @@ export interface AnalysisResult {
   keywords: string[];
 }
 
-// Keep the same helper functions from openai.ts
+// --------------------------------------------------
+// 1. Keyword extraction
+// --------------------------------------------------
 export function extractKeywords(text: string): string[] {
   const stopWords = new Set([
     "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -46,6 +48,9 @@ export function extractKeywords(text: string): string[] {
     .map(([word]) => word);
 }
 
+// --------------------------------------------------
+// 2. Simple summariser (fallback)
+// --------------------------------------------------
 function simpleSummarize(text: string): string {
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
   if (sentences.length <= 2) {
@@ -72,8 +77,10 @@ function determineSeverity(text: string): AnalysisResult["severity"] {
   return "average";
 }
 
+// --------------------------------------------------
+// 3. Main complaint analyser
+// --------------------------------------------------
 export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
-  // Fallback if no Gemini API key
   if (!genAI) {
     console.log("⚠️ No Gemini API key, using fallback analysis");
     return {
@@ -84,7 +91,6 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
   }
 
   try {
-    // Use Gemini Flash (fast & cheap)
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     const prompt = `
@@ -106,7 +112,6 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
     const result = await model.generateContent(prompt);
     const response = result.response.text();
     
-    // Try to parse JSON response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
@@ -121,20 +126,16 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
       }
     }
     
-    // If JSON parsing failed, try to extract from text
     let summary = simpleSummarize(text);
     let severity = determineSeverity(text);
     let keywords = extractKeywords(text);
     
-    // Try to extract summary from response
     const summaryMatch = response.match(/summary[:\s]+([^\n]+)/i);
     if (summaryMatch) summary = summaryMatch[1].trim().slice(0, 100);
     
-    // Try to extract severity
     const severityMatch = response.match(/severity[:\s]+(good|average|poor|bad|worst|critical)/i);
     if (severityMatch) severity = severityMatch[1].toLowerCase() as any;
     
-    // Try to extract keywords
     const keywordsMatch = response.match(/keywords[:\s]+\[([^\]]+)\]/i);
     if (keywordsMatch) {
       keywords = keywordsMatch[1]
@@ -147,7 +148,6 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
     
   } catch (error) {
     console.error("❌ Gemini analysis failed:", error);
-    // Fallback to simple analysis
     return {
       summary: simpleSummarize(text),
       severity: determineSeverity(text),
@@ -156,7 +156,9 @@ export async function analyzeComplaint(text: string): Promise<AnalysisResult> {
   }
 }
 
-// Keep the same function for compatibility
+// --------------------------------------------------
+// 4. Keyword overlap calculator
+// --------------------------------------------------
 export function calculateKeywordOverlap(keywords1: string[], keywords2: string[]): number {
   if (!keywords1.length || !keywords2.length) return 0;
   
@@ -172,13 +174,70 @@ export function calculateKeywordOverlap(keywords1: string[], keywords2: string[]
   return totalUnique > 0 ? overlap / totalUnique : 0;
 }
 
-/**
- * NEW: Fake complaint detection using Gemini AI.
- * Checks whether the complaint references known facilities/locations.
- * @param text - The complaint text to validate.
- * @param knownFacilities - Array of valid locations/facilities (rooms, hostels, etc.) at the college.
- * @returns An object with isLikelyFake flag and optional reason.
- */
+// --------------------------------------------------
+// 5. Abuse detection (Multilingual)
+// --------------------------------------------------
+export async function detectAbuseWithAI(text: string): Promise<{
+  isAbusive: boolean;
+  detectedWords: string[];
+  confidence: number;
+}> {
+  try {
+    if (!genAI || !process.env.GEMINI_API_KEY) {
+      return { isAbusive: false, detectedWords: [], confidence: 0 };
+    }
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const prompt = `
+    Analyze this text for abusive, harassing, or inappropriate content in ANY language (English, Hindi, Urdu, etc.).
+    
+    Text: "${text}"
+    
+    Respond in JSON format:
+    {
+      "isAbusive": true/false,
+      "detectedWords": ["word1", "word2"] (empty array if not abusive),
+      "confidence": 0.95 (number between 0-1),
+      "reason": "Brief explanation"
+    }
+    
+    Consider:
+    1. Profanity/swear words in any language
+    2. Personal attacks, insults
+    3. Threats, harassment
+    4. Hate speech, discrimination
+    5. Sexual harassment content
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+    
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          isAbusive: parsed.isAbusive === true,
+          detectedWords: Array.isArray(parsed.detectedWords) ? parsed.detectedWords : [],
+          confidence: parsed.confidence || 0,
+        };
+      } catch (e) {
+        console.log("Failed to parse AI response:", e);
+      }
+    }
+    
+    return { isAbusive: false, detectedWords: [], confidence: 0 };
+    
+  } catch (error) {
+    console.error("AI abuse detection failed:", error);
+    return { isAbusive: false, detectedWords: [], confidence: 0 };
+  }
+}
+
+// --------------------------------------------------
+// 6. Fake complaint detection (NEW)
+// --------------------------------------------------
 export async function detectFakeComplaint(
   text: string,
   knownFacilities: string[] = []
@@ -188,7 +247,6 @@ export async function detectFakeComplaint(
     return { isLikelyFake: false };
   }
 
-  // If no facilities are configured, we cannot validate, so return false
   if (!knownFacilities || knownFacilities.length === 0) {
     return { isLikelyFake: false };
   }
