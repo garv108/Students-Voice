@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import { Header } from "../components/header";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Textarea } from "../components/ui/textarea";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Form,
   FormControl,
@@ -25,7 +26,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Clock,
+  Sparkles,
 } from "lucide-react";
 
 const submitSchema = z.object({
@@ -43,6 +44,9 @@ export default function Submit() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
+  const [anonymous, setAnonymous] = useState(true);
+  const [isPublic, setIsPublic] = useState(true);
+
   const form = useForm<SubmitFormData>({
     resolver: zodResolver(submitSchema),
     defaultValues: {
@@ -55,9 +59,16 @@ export default function Submit() {
 
   const submitMutation = useMutation({
     mutationFn: async (data: SubmitFormData) => {
-      const response = await apiRequest("POST", "/api/complaints", data);
+      const response = await apiRequest("POST", "/api/complaints", {
+        originalText: data.originalText,
+        anonymous,
+        isPublic,
+      });
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 400 && errorData.warnings !== undefined) {
+          throw new Error(errorData.message || "Fake complaint detected");
+        }
         throw new Error(errorData.message || "Failed to submit complaint");
       }
       return response.json();
@@ -77,22 +88,27 @@ export default function Submit() {
     submitMutation.mutate(data);
   };
 
-  // REMOVED the auth check - ProtectedRoute handles it
-  // Also removed the banned user check for now
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight" data-testid="text-page-title">
-            Submit a Problem
-          </h1>
-          <p className="text-muted-foreground mt-2 max-w-2xl">
-            Describe an issue you've encountered on campus. Be specific and include
-            relevant details.
-          </p>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight" data-testid="text-page-title">
+              Submit a Problem
+            </h1>
+            <p className="text-muted-foreground mt-2 max-w-2xl">
+              Describe an issue you've encountered on campus. Be specific and include
+              relevant details.
+            </p>
+          </div>
+          <Link href="/submit-ai">
+            <Button variant="outline" size="sm" className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              AI Assistant
+            </Button>
+          </Link>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -141,6 +157,38 @@ export default function Submit() {
                         </FormItem>
                       )}
                     />
+
+                    {/* Anonymous toggle */}
+                    <div className="flex items-center gap-3 pt-2">
+                      <Checkbox
+                        id="anonymous"
+                        checked={anonymous}
+                        onCheckedChange={(checked) => setAnonymous(checked === true)}
+                      />
+                      <label htmlFor="anonymous" className="text-sm font-medium cursor-pointer">
+                        Submit anonymously
+                      </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Your name will be hidden from the public feed. College administrators may access it if necessary.
+                    </p>
+
+                    {/* Public/Private toggle */}
+                    <div className="flex items-center gap-3 pt-2">
+                      <Checkbox
+                        id="isPublic"
+                        checked={isPublic}
+                        onCheckedChange={(checked) => setIsPublic(checked === true)}
+                      />
+                      <label htmlFor="isPublic" className="text-sm font-medium cursor-pointer">
+                        Make public
+                      </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {isPublic
+                        ? "Your complaint will be visible to all students and moderators."
+                        : "Your complaint will only be visible to administrators and moderators."}
+                    </p>
 
                     <Button
                       type="submit"
