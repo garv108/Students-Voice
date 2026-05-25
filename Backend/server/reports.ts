@@ -1,5 +1,5 @@
-const pdfmake = require("pdfmake");
-const PdfPrinter = pdfmake.default || pdfmake;
+// Import PdfPrinter correctly for pdfmake 0.3.x
+const { default: PdfPrinter } = require("pdfmake");
 
 const fonts = {
   Roboto: {
