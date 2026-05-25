@@ -1,5 +1,24 @@
-// Import PdfPrinter correctly for pdfmake 0.3.x
-const { default: PdfPrinter } = require("pdfmake");
+// Robust PdfPrinter extraction – works with pdfmake 0.2.x, 0.3.x, and future versions
+const pdfmake = require("pdfmake");
+
+let PdfPrinter: any;
+if (typeof pdfmake === "function") {
+  // pdfmake 0.2.x: require returns the constructor directly
+  PdfPrinter = pdfmake;
+} else if (pdfmake && typeof pdfmake.default === "function") {
+  // pdfmake 0.3.x (transpiled): default export is the constructor
+  PdfPrinter = pdfmake.default;
+} else if (pdfmake && typeof pdfmake.PdfPrinter === "function") {
+  // pdfmake 0.3.x (ESM → CJS): named export
+  PdfPrinter = pdfmake.PdfPrinter;
+} else {
+  throw new Error(
+    "Could not find PdfPrinter constructor in pdfmake module. " +
+    "Received keys: " + Object.keys(pdfmake).join(", ")
+  );
+}
+
+// ---- Rest of file unchanged ----
 
 const fonts = {
   Roboto: {
