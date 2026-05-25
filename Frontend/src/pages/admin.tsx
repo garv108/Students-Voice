@@ -416,10 +416,21 @@ export default function Admin() {
                   <CardContent>
                     <div className="rounded-md border">
                       <Table>
-                        <TableHeader><TableRow><TableHead>Username</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined</TableHead><TableHead className="w-32">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Username</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>Warnings</TableHead>    {/* NEW */}
+                            <TableHead>Status</TableHead>
+                            <TableHead>Joined</TableHead>
+                            <TableHead className="w-32">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
                         <TableBody>
                           {data?.users?.map((user) => {
                             const isBanned = user.bannedUntil && new Date(user.bannedUntil) > new Date();
+                            const warningCount = (user as any).warnings || 0;   // NEW
                             return (
                               <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.username}</TableCell>
@@ -429,6 +440,16 @@ export default function Admin() {
                                     <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                                     <SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="moderator">Moderator</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
                                   </Select>
+                                </TableCell>
+                                {/* NEW: Warning count */}
+                                <TableCell>
+                                  {warningCount > 0 ? (
+                                    <Badge variant={warningCount >= 3 ? "destructive" : "secondary"}>
+                                      {warningCount} / 3
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-sm">0</span>
+                                  )}
                                 </TableCell>
                                 <TableCell>{isBanned ? <Badge variant="destructive" className="gap-1"><Clock className="h-3 w-3" /> Banned</Badge> : <Badge variant="secondary" className="bg-complaintStatus-solved/10 text-complaintStatus-solved">Active</Badge>}</TableCell>
                                 <TableCell className="text-sm text-muted-foreground">{formatDistanceToNow(new Date(user.createdAt!), { addSuffix: true })}</TableCell>

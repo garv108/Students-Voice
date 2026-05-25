@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";         // <-- NEW
 import {
   Select,
   SelectContent,
@@ -68,6 +69,7 @@ export default function SubmitAI() {
   const [editingDraft, setEditingDraft] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [similarIssues, setSimilarIssues] = useState<Complaint[] | null>(null);
+  const [anonymous, setAnonymous] = useState(true);            // <-- NEW
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Voice recognition state
@@ -129,6 +131,7 @@ export default function SubmitAI() {
     setEditingDraft(false);
     setRetryMessage(null);
     setSimilarIssues(null);
+    setAnonymous(true);                                      // reset
     toast({ title: "Chat cleared" });
   };
 
@@ -139,7 +142,7 @@ export default function SubmitAI() {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setLoading(true);
     setRetryMessage(null);
-    setSimilarIssues(null); // reset when new message sent
+    setSimilarIssues(null);
 
     try {
       const response = await apiRequest("POST", "/api/complaints/ai-chat", {
@@ -163,11 +166,9 @@ export default function SubmitAI() {
     handleSendMessage();
   };
 
-  // ===== NEW: check for similar issues =====
   const checkSimilarIssues = async () => {
     setLoading(true);
     try {
-      // Use the last user message as the search text
       const lastUserMsg = [...messages].reverse().find(m => m.role === "user")?.content || "";
       const res = await apiRequest("GET", `/api/complaints/similar?text=${encodeURIComponent(lastUserMsg)}`);
       if (!res.ok) throw new Error("Failed to fetch similar issues");
@@ -195,6 +196,10 @@ export default function SubmitAI() {
       }
       setDraft(draft);
       setEditingDraft(true);
+      // Enforce anonymity rules based on AI‑determined category
+      if (draft.category === "Harassment" || draft.category === "Discrimination") {
+        setAnonymous(false);
+      }
     } catch (error) {
       toast({ title: "Error", description: "Failed to generate draft.", variant: "destructive" });
     } finally {
@@ -212,9 +217,20 @@ export default function SubmitAI() {
         category: draft.category,
         severity: draft.severity,
         status,
+        anonymous,          // <-- NEW
       });
       if (!response.ok) {
         const err = await response.json();
+        // Handle fake complaint detection (400 with warnings)
+        if (response.status === 400 && err.warnings !== undefined) {
+          toast({
+            title: err.warnings >= 3 ? "Account Banned" : "Fake Complaint Detected",
+            description: err.message,
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
         if (response.status === 409) {
           toast({ title: "Duplicate submission", description: err.message, variant: "destructive" });
           setLoading(false);
@@ -233,6 +249,14 @@ export default function SubmitAI() {
       setLoading(false);
     }
   };
+
+  // Determine if anonymous can be toggled based on category
+  const canToggleAnonymous = draft
+    ? draft.category !== "Harassment" && draft.category !== "Discrimination"
+    : true;
+  const anonymousForcedOff = draft
+    ? (draft.category === "Harassment" || draft.category === "Discrimination")
+    : false;
 
   // Draft review view
   if (draft && editingDraft) {
@@ -282,6 +306,29 @@ export default function SubmitAI() {
                     </Select>
                   </div>
                 </div>
+
+                {/* Anonymous toggle */}
+                <div className="flex items-center gap-3 pt-2">
+                  <Checkbox
+                    id="anonymous"
+                    checked={anonymous}
+                    onCheckedChange={(checked) => setAnonymous(checked === true)}
+                    disabled={!canToggleAnonymous}
+                  />
+                  <label htmlFor="anonymous" className="text-sm font-medium cursor-pointer">
+                    Submit anonymously
+                  </label>
+                </div>
+                {anonymousForcedOff && (
+                  <p className="text-xs text-destructive">
+                    Your identity is required for this type of complaint under the POSH Act / UGC regulations.
+                  </p>
+                )}
+                {!anonymousForcedOff && (
+                  <p className="text-xs text-muted-foreground">
+                    Your name will be hidden from the public feed. College administrators may access it if necessary.
+                  </p>
+                )}
               </div>
               <div className="flex gap-3 pt-4">
                 <Button onClick={() => submitComplaint("pending")} disabled={loading}>
@@ -330,7 +377,6 @@ export default function SubmitAI() {
                 <div className="max-w-[80%] px-4 py-2 rounded-xl bg-muted"><Loader2 className="h-4 w-4 animate-spin" /></div>
               </div>
             )}
-            {/* Edge Case 3: Retry button */}
             {retryMessage && !loading && (
               <div className="flex justify-end px-4">
                 <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={retryLastMessage}>
@@ -354,7 +400,6 @@ export default function SubmitAI() {
                     </Button>
                   )}
                 </div>
-                {/* Similar issues panel */}
                 {similarIssues && similarIssues.length > 0 && (
                   <Card className="p-3 bg-muted/30">
                     <p className="text-sm font-medium mb-2">Similar issues found:</p>

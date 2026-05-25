@@ -62,6 +62,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   role: roleEnum("role").notNull().default("student"),
   bannedUntil: timestamp("banned_until"),
+  warnings: integer("warnings").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   isVerified: boolean("is_verified").notNull().default(false),
   verificationToken: text("verification_token"),
@@ -113,7 +114,9 @@ export const complaints = pgTable("complaints", {
   dislikesCount: integer("dislikes_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   withdrawnAt: timestamp("withdrawn_at"),
-  slaDeadline: timestamp("sla_deadline"),   // ← NEW: expected resolution deadline
+  slaDeadline: timestamp("sla_deadline"),
+  isAnonymous: boolean("is_anonymous").notNull().default(false),   // NEW
+  isPublic: boolean("is_public").notNull().default(true),          // NEW
 });
 
 export const complaintsRelations = relations(complaints, ({ one, many }) => ({
@@ -258,6 +261,8 @@ export const insertComplaintSchema = z.object({
   description: z.string().optional(),
   category: z.string().optional(),
   status: z.enum(["pending", "draft"]).optional().default("pending"),
+  isAnonymous: z.boolean().optional().default(false),   // NEW
+  isPublic: z.boolean().optional().default(true),       // NEW
 }).refine(data => data.originalText || data.description, {
   message: "Complaint text is required",
   path: ["originalText"],

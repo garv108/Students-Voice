@@ -1,7 +1,7 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { detectProfanity, getBanExpiration } from "../profanity";
-import { analyzeComplaint, extractKeywords, calculateKeywordOverlap } from "../gemini";
+import { analyzeComplaint, extractKeywords, calculateKeywordOverlap, detectFakeComplaint } from "../gemini";
 import { insertComplaintSchema } from "../../shared/schema";
 import { z } from "zod";
 import { requireCollege, CollegeRequest } from "../middleware/college";
@@ -120,6 +120,37 @@ export function registerComplaintRoutes(app: Express) {
           });
         }
 
+        // ------- Fake complaint detection -------
+        const collegeSettingsData = req.collegeId
+          ? await storage.getCollegeSettings(req.collegeId)
+          : null;
+        const knownFacilities: string[] = collegeSettingsData?.features?.facilities || [];
+
+        const fakeCheck = await detectFakeComplaint(data.originalText!, knownFacilities);
+
+        if (fakeCheck.isLikelyFake) {
+          const currentWarnings = (user.warnings || 0) + 1;
+          await storage.updateUser(user.id, { warnings: currentWarnings });
+
+          if (currentWarnings >= 3) {
+            const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            await storage.updateUserBan(user.id, thirtyDays);
+            return res.status(403).json({
+              message:
+                "Your complaint appears to reference locations or facilities that do not exist. Your account has been banned for 30 days due to repeated fake submissions.",
+              warnings: currentWarnings,
+            });
+          }
+
+          return res.status(400).json({
+            message:
+              "Your complaint references locations or facilities that could not be verified. Please check your details. Repeated fake submissions will result in a ban.",
+            warnings: currentWarnings,
+            reason: fakeCheck.reason,
+          });
+        }
+        // ---------------------------------------
+
         const analysis = await analyzeComplaint(data.originalText!);
         const cluster = await storage.getOrCreateCluster(analysis.keywords);
 
@@ -142,7 +173,9 @@ export function registerComplaintRoutes(app: Express) {
           likesCount: 0,
           dislikesCount: 0,
           withdrawnAt: null,
-          slaDeadline: computeSLADeadline("normal"), // new field
+          slaDeadline: computeSLADeadline("normal"),
+          isAnonymous: data.isAnonymous ?? false,     // NEW
+          isPublic: data.isPublic ?? true,            // NEW
         });
 
         if (cluster) {
@@ -188,16 +221,24 @@ app.get(
     try {
       const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
 
-      // Compute stats directly from the returned complaints
+      // Filter out private complaints on the public leaderboard
+      const publicComplaints = complaintsData.filter(c => c.isPublic !== false);
+
+      // Replace username with "[Anonymous]" for anonymous complaints
+      const sanitized = publicComplaints.map(c => ({
+        ...c,
+        username: c.isAnonymous ? "[Anonymous]" : c.username,
+      }));
+
       const stats = {
-        total: complaintsData.length,
-        urgent: complaintsData.filter(c => c.urgency === 'urgent').length,
-        critical: complaintsData.filter(c => c.urgency === 'critical' || c.urgency === 'top_priority').length,
-        emergency: complaintsData.filter(c => c.urgency === 'emergency').length,
-        solved: complaintsData.filter(c => c.solved).length,
+        total: sanitized.length,
+        urgent: sanitized.filter(c => c.urgency === 'urgent').length,
+        critical: sanitized.filter(c => c.urgency === 'critical' || c.urgency === 'top_priority').length,
+        emergency: sanitized.filter(c => c.urgency === 'emergency').length,
+        solved: sanitized.filter(c => c.solved).length,
       };
 
-      res.json({ complaints: complaintsData, stats });
+      res.json({ complaints: sanitized, stats });
     } catch (error) {
       console.error("Leaderboard error:", error);
       res.status(500).json({ message: "Failed to load leaderboard" });
@@ -221,7 +262,17 @@ app.get(
           sort: query.sort,
           collegeId: req.collegeId!,
         });
-        res.json({ complaints });
+
+        // Filter out private complaints on the public explore page
+        const publicComplaints = complaints.filter(c => c.isPublic !== false);
+
+        // Replace username with "[Anonymous]" for anonymous complaints
+        const sanitized = publicComplaints.map(c => ({
+          ...c,
+          username: c.isAnonymous ? "[Anonymous]" : c.username,
+        }));
+
+        res.json({ complaints: sanitized });
       } catch (error) {
         console.error("Explore error:", error);
         res.status(500).json({ message: "Failed to load complaints" });
@@ -465,7 +516,13 @@ app.get(
           .slice(0, 3)
           .map(s => s.complaint);
 
-        res.json(matches);
+        // Sanitize anonymous complaints for public display
+        const sanitized = matches.map(c => ({
+          ...c,
+          username: c.isAnonymous ? "[Anonymous]" : c.username,
+        }));
+
+        res.json(sanitized);
       } catch (error) {
         console.error("Similar complaints error:", error);
         res.status(500).json({ message: "Failed to find similar issues" });

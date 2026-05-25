@@ -173,63 +173,60 @@ export function calculateKeywordOverlap(keywords1: string[], keywords2: string[]
 }
 
 /**
- * Detect abusive content using Gemini AI (multilingual)
+ * NEW: Fake complaint detection using Gemini AI.
+ * Checks whether the complaint references known facilities/locations.
+ * @param text - The complaint text to validate.
+ * @param knownFacilities - Array of valid locations/facilities (rooms, hostels, etc.) at the college.
+ * @returns An object with isLikelyFake flag and optional reason.
  */
-export async function detectAbuseWithAI(text: string): Promise<{
-  isAbusive: boolean;
-  detectedWords: string[];
-  confidence: number;
-}> {
-  try {
-    if (!genAI || !process.env.GEMINI_API_KEY) {
-      return { isAbusive: false, detectedWords: [], confidence: 0 };
-    }
+export async function detectFakeComplaint(
+  text: string,
+  knownFacilities: string[] = []
+): Promise<{ isLikelyFake: boolean; reason?: string }> {
+  if (!genAI || !process.env.GEMINI_API_KEY) {
+    console.log("⚠️ Gemini not configured, skipping fake detection");
+    return { isLikelyFake: false };
+  }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    
+  // If no facilities are configured, we cannot validate, so return false
+  if (!knownFacilities || knownFacilities.length === 0) {
+    return { isLikelyFake: false };
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+
     const prompt = `
-    Analyze this text for abusive, harassing, or inappropriate content in ANY language (English, Hindi, Urdu, etc.).
-    
-    Text: "${text}"
-    
-    Respond in JSON format:
-    {
-      "isAbusive": true/false,
-      "detectedWords": ["word1", "word2"] (empty array if not abusive),
-      "confidence": 0.95 (number between 0-1),
-      "reason": "Brief explanation"
-    }
-    
-    Consider:
-    1. Profanity/swear words in any language
-    2. Personal attacks, insults
-    3. Threats, harassment
-    4. Hate speech, discrimination
-    5. Sexual harassment content
-    `;
+You are an integrity checker for a student grievance portal at a specific college.
+The college has the following known facilities/locations: ${knownFacilities.join(", ")}.
+
+A student submitted this complaint: "${text}".
+
+Check if the complaint refers to locations, rooms, facilities, or departments that do NOT exist in the provided list.
+If it mentions something that is clearly not in the list, mark it as likely fake.
+If it only mentions things that could exist or are generic, mark it as not fake.
+
+Return ONLY valid JSON:
+{
+  "isLikelyFake": true or false,
+  "reason": "Brief explanation if fake, or null"
+}`;
 
     const result = await model.generateContent(prompt);
     const response = result.response.text();
-    
-    // Parse JSON response
+
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          isAbusive: parsed.isAbusive === true,
-          detectedWords: Array.isArray(parsed.detectedWords) ? parsed.detectedWords : [],
-          confidence: parsed.confidence || 0,
-        };
-      } catch (e) {
-        console.log("Failed to parse AI response:", e);
-      }
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        isLikelyFake: parsed.isLikelyFake === true,
+        reason: parsed.reason || undefined,
+      };
     }
-    
-    return { isAbusive: false, detectedWords: [], confidence: 0 };
-    
+
+    return { isLikelyFake: false };
   } catch (error) {
-    console.error("AI abuse detection failed:", error);
-    return { isAbusive: false, detectedWords: [], confidence: 0 };
+    console.error("❌ Fake complaint detection failed:", error);
+    return { isLikelyFake: false };
   }
 }
