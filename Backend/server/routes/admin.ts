@@ -232,11 +232,11 @@ Return ONLY valid JSON:
   app.get(
     "/api/admin/reports/:type",
     requireAuth,
-    requireCollege,       // <-- added to provide req.collegeId
+    requireCollege,
     requireAdmin,
-    async (req: CollegeRequest, res: Response) => {   // <-- typed as CollegeRequest
+    async (req: CollegeRequest, res: Response) => {
       try {
-        const reportType = req.params.type;
+        const reportType = (req as any).params.type;   // <-- FIXED
         const validTypes = ["ugc-annual", "naac-ssr", "icc-annual", "anti-ragging", "sc-st-cell"];
         if (!validTypes.includes(reportType)) {
           return res.status(400).json({ message: "Invalid report type" });
@@ -260,7 +260,7 @@ Return ONLY valid JSON:
 
         // Get college name from settings
         let collegeName = "Your Institution";
-        if (req.collegeId) {                             // <-- now available
+        if (req.collegeId) {
           const settings = await storage.getCollegeSettings(req.collegeId);
           collegeName = settings?.name || collegeName;
         }
