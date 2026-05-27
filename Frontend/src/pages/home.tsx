@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Link } from "wouter";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   TrendingUp,
   Users,
@@ -27,6 +27,7 @@ import {
   AlertCircle,
   CheckCircle,
   X,
+  Quote,
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -43,7 +44,6 @@ interface LeaderboardData {
     critical?: number;
     emergency?: number;
     solved?: number;
-    // fallback keys
     totalComplaints?: number;
     urgentCount?: number;
     criticalCount?: number;
@@ -52,9 +52,19 @@ interface LeaderboardData {
   };
 }
 
+const BACKEND_URL = "https://student-complaint-backend.onrender.com";
+
 export default function Home() {
   const [urgencyFilter, setUrgencyFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dailyQuote, setDailyQuote] = useState<string>("");
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/quote`)
+      .then(res => res.json())
+      .then(data => setDailyQuote(data.quote || ""))
+      .catch(() => {});
+  }, []);
 
   const { data, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard"],
@@ -72,7 +82,6 @@ export default function Home() {
     }) || [];
   }, [data, urgencyFilter, statusFilter]);
 
-  // Compute stats directly from complaints, with fallback to backend stats if available
   const stats = useMemo(() => {
     const complaints = data?.complaints || [];
     const total = data?.stats?.total ?? data?.stats?.totalComplaints ?? complaints.length;
@@ -94,6 +103,16 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {/* Daily Quote Banner */}
+      {dailyQuote && (
+        <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-b border-blue-100 dark:from-blue-950 dark:via-indigo-950 dark:to-purple-950 dark:border-blue-900">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-center gap-2 text-sm italic text-blue-800 dark:text-blue-200 text-center">
+            <Quote className="h-4 w-4 shrink-0 text-blue-500" />
+            {dailyQuote}
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="bg-gradient-to-b from-primary/5 to-background py-12 md:py-16">
