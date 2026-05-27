@@ -175,6 +175,7 @@ export default function Admin() {
     enabled: !!currentUser && (currentUser?.role === "admin" || currentUser?.role === "moderator") && isAuthorized === true,
     retry: false,
     staleTime: 30000,
+    refetchInterval: 10_000, // ✅ auto-refresh every 10 seconds
   });
 
   const editMutation = useMutation({

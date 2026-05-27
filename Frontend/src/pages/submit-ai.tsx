@@ -78,6 +78,7 @@ export default function SubmitAI() {
 
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const silenceTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!SpeechRecognition) return;
@@ -85,41 +86,60 @@ export default function SubmitAI() {
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = "en-US";
+
+    recognition.onstart = () => {
+      setListening(true);
+      // auto‑stop after 3 seconds of silence
+      silenceTimer.current = setTimeout(() => {
+        recognition.stop();
+      }, 3000);
+    };
+
     recognition.onresult = (event: any) => {
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
       const transcript = event.results[0][0].transcript.trim();
       if (transcript) {
         setInput((prev) => prev + (prev ? " " : "") + transcript);
       }
+      recognition.stop(); // stop immediately after result
       setListening(false);
     };
+
     recognition.onerror = (event: any) => {
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
       console.error("Speech recognition error:", event.error);
       setListening(false);
     };
-    recognition.onend = () => setListening(false);
+
+    recognition.onend = () => {
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
+      setListening(false);
+    };
+
     recognitionRef.current = recognition;
+
+    return () => {
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
+      if (recognitionRef.current && listening) {
+        recognitionRef.current.abort();
+      }
+    };
   }, []);
 
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return;
     if (listening) {
-      recognitionRef.current.stop();
+      // force‑stop on manual click
+      recognitionRef.current.abort();
       setListening(false);
     } else {
       try {
         recognitionRef.current.start();
-        setListening(true);
       } catch (err) {
-        console.error(err);
+        toast({ title: "Microphone error", description: "Could not start. Please try again.", variant: "destructive" });
       }
     }
-  }, [listening]);
-
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current && listening) recognitionRef.current.stop();
-    };
-  }, [listening]);
+  }, [listening, toast]);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch (e) {}

@@ -68,6 +68,7 @@ export default function Home() {
 
   const { data, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard"],
+    refetchInterval: 10_000, // ✅ auto-refresh every 10 seconds
   });
 
   const filteredComplaints = useMemo(() => {

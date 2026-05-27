@@ -28,6 +28,7 @@ export function ComplaintChat({ complaintId, onClose }: { complaintId: string; o
       if (!res.ok) throw new Error("Failed to load messages");
       return res.json();
     },
+    refetchInterval: 5_000,   // ✅ auto‑refresh chat every 5 seconds
   });
 
   const sendMutation = useMutation({
