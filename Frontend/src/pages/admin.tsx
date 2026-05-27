@@ -90,6 +90,9 @@ const REPORT_TYPES = [
   { key: "sc-st-cell", label: "SC/ST Cell Grievance Report", description: "UGC Equity Regulations, 2025" },
 ];
 
+// Backend base URL – adjust if different
+const BACKEND_URL = "https://student-complaint-backend.onrender.com";
+
 export default function Admin() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -219,12 +222,31 @@ export default function Admin() {
     onError: (error: any) => toast({ title: "Failed to unban user", description: error.message, variant: "destructive" }),
   });
 
-  // Download report handler
-  const downloadReport = (reportType: string) => {
+  // ✅ Correct report download — fetches directly from Render backend
+  const downloadReport = async (reportType: string) => {
     setDownloadingReport(reportType);
-    // Open PDF in new tab (also triggers download)
-    window.open(`/api/admin/reports/${reportType}`, "_blank");
-    setTimeout(() => setDownloadingReport(null), 2000);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/reports/${reportType}`, {
+        credentials: "include", // sends session cookie for authentication
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Download failed" }));
+        throw new Error(err.message || "Download failed");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${reportType}-report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast({ title: "Report download failed", description: error.message, variant: "destructive" });
+    } finally {
+      setDownloadingReport(null);
+    }
   };
 
   if (authLoading || isAuthorized === null) {
@@ -361,7 +383,6 @@ export default function Admin() {
 
               {/* ===== COMPLAINTS TAB ===== */}
               <TabsContent value="complaints" className="space-y-4">
-                {/* ... unchanged complaints table ... */}
                 <Card>
                   <CardHeader>
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -409,7 +430,6 @@ export default function Admin() {
 
               {/* ===== ABUSE LOGS TAB ===== */}
               <TabsContent value="abuse" className="space-y-4">
-                {/* ... unchanged abuse logs ... */}
                 <Card>
                   <CardHeader><CardTitle>Abuse Logs</CardTitle><CardDescription>Review flagged content and manage user violations</CardDescription></CardHeader>
                   <CardContent>
@@ -433,7 +453,6 @@ export default function Admin() {
 
               {/* ===== USERS TAB ===== */}
               <TabsContent value="users" className="space-y-4">
-                {/* ... unchanged users table with warnings ... */}
                 <Card>
                   <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user roles and account status</CardDescription></CardHeader>
                   <CardContent>
@@ -500,7 +519,6 @@ export default function Admin() {
 
               {/* ===== ANALYTICS TAB ===== */}
               <TabsContent value="analytics" className="space-y-6">
-                {/* ... unchanged analytics charts and insights ... */}
                 <div className="grid md:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader><CardTitle>Complaints by Month</CardTitle></CardHeader>
