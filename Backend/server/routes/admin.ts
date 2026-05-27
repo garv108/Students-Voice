@@ -19,19 +19,48 @@ async function requireAdmin(
     return res.status(401).json({ message: "Authentication required" });
   }
 
-  const user = await storage.getUser(
-    (req as any).session.userId
-  );
+  const user = await storage.getUser((req as any).session.userId);
 
   if (!user || (user.role !== "admin" && user.role !== "moderator")) {
-    return res.status(403).json({
-      message: "Admin access required",
-    });
+    return res.status(403).json({ message: "Admin access required" });
   }
 
   (req as any).user = user;
   next();
 }
+
+// ---------------------------------------------------------------
+// Platform mode state – can be imported by other modules
+// ---------------------------------------------------------------
+let platformMode: "normal" | "maintenance" | "seize" = "normal";
+let lastQuote: string | null = null;
+let quoteTimestamp = 0; // ms
+
+export function getPlatformMode() {
+  return platformMode;
+}
+
+// ---------------------------------------------------------------
+// Daily quote generator (Gemini)
+// ---------------------------------------------------------------
+async function refreshQuote() {
+  if (lastQuote && Date.now() - quoteTimestamp < 24 * 60 * 60 * 1000) return;
+  try {
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+    const prompt = `Give a short, inspiring quote suitable for a student grievance portal dashboard. Include the author's name. Keep it under 120 characters.`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    lastQuote = text || "“The best way to find yourself is to lose yourself in the service of others.” – Mahatma Gandhi";
+    quoteTimestamp = Date.now();
+  } catch (e) {
+    // fallback quote if AI fails
+    lastQuote = "“The best way to find yourself is to lose yourself in the service of others.” – Mahatma Gandhi";
+  }
+}
+// Generate first quote immediately
+refreshQuote();
 
 export function registerAdminRoutes(app: Express) {
 
@@ -49,7 +78,6 @@ export function registerAdminRoutes(app: Express) {
         users: users || [],
         abuseLogs: abuseLogs || []
       });
-
     } catch (error) {
       console.error("Dashboard error:", error);
       res.status(500).json({ message: "Failed to load dashboard" });
@@ -131,7 +159,6 @@ export function registerAdminRoutes(app: Express) {
       });
 
       res.json({ success: true });
-
     } catch (error) {
       console.error("Update complaint error:", error);
       res.status(500).json({ message: "Failed to update complaint" });
@@ -157,7 +184,6 @@ export function registerAdminRoutes(app: Express) {
     try {
       const allComplaints = await storage.getComplaints();
 
-      // Group by month
       const byMonth: Record<string, number> = {};
       const byCategory: Record<string, number> = {};
       const bySeverity: Record<string, number> = {};
@@ -244,13 +270,11 @@ Return ONLY valid JSON:
           return res.status(400).json({ message: "Invalid report type" });
         }
 
-        // Get all non-draft, non-withdrawn complaints
         const allComplaints = await storage.getComplaints();
         const publicComplaints = allComplaints.filter(
           c => c.status !== "draft" && c.status !== "withdrawn"
         );
 
-        // Optionally filter by category for specialised reports
         let filtered = publicComplaints;
         if (reportType === "icc-annual") {
           filtered = publicComplaints.filter(c => c.category === "Harassment");
@@ -260,15 +284,14 @@ Return ONLY valid JSON:
           filtered = publicComplaints.filter(c => c.category === "Discrimination");
         }
 
-        // Build summary objects matching the new Complaint interface from reports.ts
         const summaries = filtered.map(c => ({
           status: c.status,
-          category: c.category || "Other",         // ensure string, not null
+          category: c.category || "Other",
           severity: c.severity || "average",
           urgency: c.urgency || "normal",
           createdAt: new Date(c.createdAt),
           solved: c.solved,
-          solvedAt: c.solvedAt ? new Date(c.solvedAt) : undefined,  // optional
+          solvedAt: c.solvedAt ? new Date(c.solvedAt) : undefined,
         }));
 
         const collegeName = (await storage.getCollegeSettings(req.collegeId!))?.name;
@@ -286,4 +309,38 @@ Return ONLY valid JSON:
       }
     }
   );
+
+  // ==================== PLATFORM MODE CONTROL ====================
+
+  // Public: get current mode
+  app.get("/api/maintenance", (req: Request, res: Response) => {
+    res.json({ mode: platformMode });
+  });
+
+  // Set mode (super admin only)
+  app.post("/api/admin/maintenance", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      if (user.username !== "Garv108") {
+        return res.status(403).json({ message: "Only the super admin can change platform mode" });
+      }
+
+      const { mode } = req.body;
+      if (!["normal", "maintenance", "seize"].includes(mode)) {
+        return res.status(400).json({ message: "Invalid mode. Use: normal, maintenance, seize" });
+      }
+
+      platformMode = mode;
+      res.json({ mode: platformMode });
+    } catch (error) {
+      console.error("Set mode error:", error);
+      res.status(500).json({ message: "Failed to set mode" });
+    }
+  });
+
+  // ==================== DAILY QUOTE ====================
+  app.get("/api/quote", async (req: Request, res: Response) => {
+    await refreshQuote();
+    res.json({ quote: lastQuote });
+  });
 }

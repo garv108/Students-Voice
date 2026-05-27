@@ -90,7 +90,6 @@ const REPORT_TYPES = [
   { key: "sc-st-cell", label: "SC/ST Cell Grievance Report", description: "UGC Equity Regulations, 2025" },
 ];
 
-// Backend base URL – adjust if different
 const BACKEND_URL = "https://student-complaint-backend.onrender.com";
 
 export default function Admin() {
@@ -118,6 +117,10 @@ export default function Admin() {
   // ===== REPORT DOWNLOAD STATE =====
   const [downloadingReport, setDownloadingReport] = useState<string | null>(null);
 
+  // ===== PLATFORM MODE STATE =====
+  const [platformMode, setPlatformMode] = useState<string>("normal");
+  const [dailyQuote, setDailyQuote] = useState<string>("");
+
   useEffect(() => {
     if (!authLoading) {
       if (!currentUser) {
@@ -139,6 +142,22 @@ export default function Admin() {
         .catch(() => {});
     }
   }, [isAuthorized]);
+
+  // Fetch current platform mode
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/maintenance`)
+      .then(res => res.json())
+      .then(data => setPlatformMode(data.mode || "normal"))
+      .catch(() => {});
+  }, []);
+
+  // Fetch daily quote
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/quote`)
+      .then(res => res.json())
+      .then(data => setDailyQuote(data.quote || ""))
+      .catch(() => {});
+  }, []);
 
   const { data, isLoading, error, refetch } = useQuery<AdminData>({
     queryKey: ["/api/admin/dashboard"],
@@ -222,12 +241,11 @@ export default function Admin() {
     onError: (error: any) => toast({ title: "Failed to unban user", description: error.message, variant: "destructive" }),
   });
 
-  // ✅ Correct report download — fetches directly from Render backend
   const downloadReport = async (reportType: string) => {
     setDownloadingReport(reportType);
     try {
       const res = await fetch(`${BACKEND_URL}/api/admin/reports/${reportType}`, {
-        credentials: "include", // sends session cookie for authentication
+        credentials: "include",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: "Download failed" }));
@@ -246,6 +264,22 @@ export default function Admin() {
       toast({ title: "Report download failed", description: error.message, variant: "destructive" });
     } finally {
       setDownloadingReport(null);
+    }
+  };
+
+  // Set platform mode (only Garv108 can trigger from UI, backend also validates)
+  const setMode = async (mode: string) => {
+    try {
+      const res = await apiRequest("POST", "/api/admin/maintenance", { mode });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to set mode");
+      }
+      const data = await res.json();
+      setPlatformMode(data.mode);
+      toast({ title: `Platform mode set to: ${data.mode}` });
+    } catch (error: any) {
+      toast({ title: "Failed to set mode", description: error.message, variant: "destructive" });
     }
   };
 
@@ -343,17 +377,64 @@ export default function Admin() {
     setInsightsLoading(false);
   };
 
+  const modeBannerClass = platformMode === "seize"
+    ? "bg-red-50 border-red-300 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200"
+    : platformMode === "maintenance"
+    ? "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
+    : "";
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Admin Dashboard</h1>
             <p className="text-muted-foreground mt-2">Welcome back, {currentUser?.username} ({currentUser?.role})</p>
           </div>
-          <Button variant="outline" onClick={() => refetch()} className="gap-2"><RefreshCw className="h-4 w-4" /> Refresh</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Platform mode selector – Garv108 only */}
+            {currentUser?.username === "Garv108" && (
+              <Select value={platformMode} onValueChange={setMode}>
+                <SelectTrigger className="w-36 h-9 text-sm">
+                  <SelectValue placeholder="Mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">🟢 Normal</SelectItem>
+                  <SelectItem value="maintenance">🟡 Maintenance</SelectItem>
+                  <SelectItem value="seize">🔴 Seize</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+          </div>
         </div>
+
+        {/* Mode banner */}
+        {platformMode !== "normal" && (
+          <div className={`mb-4 p-3 rounded-lg border text-sm flex items-start gap-3 ${modeBannerClass}`}>
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                {platformMode === "seize" ? "Platform Locked" : "Maintenance Mode"}
+              </p>
+              <p className="text-sm">
+                {platformMode === "seize"
+                  ? "All new submissions and interactions are temporarily disabled."
+                  : "New complaints will be saved as drafts only."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Daily Quote */}
+        {dailyQuote && (
+          <div className="mb-6 p-3 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 dark:from-blue-950 dark:to-indigo-950 dark:border-blue-900 text-center italic text-sm text-blue-800 dark:text-blue-200">
+            {dailyQuote}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-6">
@@ -373,12 +454,12 @@ export default function Admin() {
             </div>
 
             <Tabs defaultValue="complaints" className="space-y-6">
-              <TabsList>
-                <TabsTrigger value="complaints" className="gap-2"><MessageSquare className="h-4 w-4" /> Complaints</TabsTrigger>
-                <TabsTrigger value="abuse" className="gap-2"><AlertTriangle className="h-4 w-4" /> Abuse Logs {stats.abuseLogs > 0 && <Badge variant="destructive" className="ml-1">{stats.abuseLogs}</Badge>}</TabsTrigger>
-                <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4" /> Users</TabsTrigger>
-                <TabsTrigger value="analytics" className="gap-2"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
-                <TabsTrigger value="reports" className="gap-2"><FileDown className="h-4 w-4" /> Reports</TabsTrigger>
+              <TabsList className="overflow-x-auto flex-nowrap">
+                <TabsTrigger value="complaints" className="gap-2 shrink-0"><MessageSquare className="h-4 w-4" /> Complaints</TabsTrigger>
+                <TabsTrigger value="abuse" className="gap-2 shrink-0"><AlertTriangle className="h-4 w-4" /> Abuse Logs {stats.abuseLogs > 0 && <Badge variant="destructive" className="ml-1">{stats.abuseLogs}</Badge>}</TabsTrigger>
+                <TabsTrigger value="users" className="gap-2 shrink-0"><Users className="h-4 w-4" /> Users</TabsTrigger>
+                <TabsTrigger value="analytics" className="gap-2 shrink-0"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
+                <TabsTrigger value="reports" className="gap-2 shrink-0"><FileDown className="h-4 w-4" /> Reports</TabsTrigger>
               </TabsList>
 
               {/* ===== COMPLAINTS TAB ===== */}
@@ -398,18 +479,18 @@ export default function Admin() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="rounded-md border">
+                    <div className="rounded-md border overflow-x-auto">
                       <Table>
-                        <TableHeader><TableRow><TableHead className="w-12"><Checkbox checked={selectedComplaints.length === filteredComplaints?.length && filteredComplaints?.length > 0} onCheckedChange={handleSelectAll} /></TableHead><TableHead>User</TableHead><TableHead className="w-1/3">Content</TableHead><TableHead>Status</TableHead><TableHead>Urgency</TableHead><TableHead>Date</TableHead><TableHead className="w-24">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-12"><Checkbox checked={selectedComplaints.length === filteredComplaints?.length && filteredComplaints?.length > 0} onCheckedChange={handleSelectAll} /></TableHead><TableHead>User</TableHead><TableHead className="min-w-[200px]">Content</TableHead><TableHead>Status</TableHead><TableHead>Urgency</TableHead><TableHead>Date</TableHead><TableHead className="w-24">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
                           {filteredComplaints?.map((complaint) => (
                             <TableRow key={complaint.id}>
                               <TableCell><Checkbox checked={selectedComplaints.includes(complaint.id)} onCheckedChange={() => handleSelectComplaint(complaint.id)} /></TableCell>
                               <TableCell className="font-medium">{complaint.username}</TableCell>
-                              <TableCell><p className="line-clamp-2 text-sm text-muted-foreground">{complaint.originalText}</p></TableCell>
+                              <TableCell className="max-w-xs"><p className="line-clamp-2 text-sm text-muted-foreground">{complaint.originalText}</p></TableCell>
                               <TableCell><StatusBadge status={complaint.status} /></TableCell>
                               <TableCell><UrgencyBadge urgency={complaint.urgency} /></TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{formatDistanceToNow(new Date(complaint.createdAt!), { addSuffix: true })}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDistanceToNow(new Date(complaint.createdAt!), { addSuffix: true })}</TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
                                   <Button variant="ghost" size="icon" onClick={() => openEditDialog(complaint)}><Pencil className="h-4 w-4" /></Button>
@@ -433,20 +514,20 @@ export default function Admin() {
                 <Card>
                   <CardHeader><CardTitle>Abuse Logs</CardTitle><CardDescription>Review flagged content and manage user violations</CardDescription></CardHeader>
                   <CardContent>
-                    {data?.abuseLogs && data.abuseLogs.length > 0 ? (
-                      <div className="rounded-md border">
+                    <div className="overflow-x-auto rounded-md border">
+                      {data?.abuseLogs && data.abuseLogs.length > 0 ? (
                         <Table>
                           <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Flagged Content</TableHead><TableHead>Detected Words</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
                           <TableBody>
                             {data.abuseLogs.map((log) => (
-                              <TableRow key={log.id}><TableCell className="font-medium">{log.username}</TableCell><TableCell><p className="line-clamp-2 text-sm text-muted-foreground max-w-md">{log.flaggedText}</p></TableCell><TableCell><div className="flex gap-1 flex-wrap">{log.detectedWords?.map((word, idx) => <Badge key={idx} variant="destructive" className="text-xs">{word}</Badge>)}</div></TableCell><TableCell className="text-sm text-muted-foreground">{formatDistanceToNow(new Date(log.createdAt!), { addSuffix: true })}</TableCell></TableRow>
+                              <TableRow key={log.id}><TableCell className="font-medium">{log.username}</TableCell><TableCell className="max-w-xs"><p className="line-clamp-2 text-sm text-muted-foreground">{log.flaggedText}</p></TableCell><TableCell><div className="flex gap-1 flex-wrap">{log.detectedWords?.map((word, idx) => <Badge key={idx} variant="destructive" className="text-xs">{word}</Badge>)}</div></TableCell><TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDistanceToNow(new Date(log.createdAt!), { addSuffix: true })}</TableCell></TableRow>
                             ))}
                           </TableBody>
                         </Table>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-muted-foreground"><CheckCircle className="h-12 w-12 mx-auto mb-4 text-complaintStatus-solved" /><p>No abuse logs found</p></div>
-                    )}
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground"><CheckCircle className="h-12 w-12 mx-auto mb-4 text-complaintStatus-solved" /><p>No abuse logs found</p></div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -456,7 +537,7 @@ export default function Admin() {
                 <Card>
                   <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user roles and account status</CardDescription></CardHeader>
                   <CardContent>
-                    <div className="rounded-md border">
+                    <div className="rounded-md border overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -476,7 +557,7 @@ export default function Admin() {
                             return (
                               <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.username}</TableCell>
-                                <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                                <TableCell className="text-muted-foreground max-w-[150px] truncate">{user.email}</TableCell>
                                 <TableCell>
                                   <Select value={user.role} onValueChange={(role) => updateRoleMutation.mutate({ userId: user.id, role })} disabled={user.id === currentUser.id || updateRoleMutation.isPending}>
                                     <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
@@ -493,7 +574,7 @@ export default function Admin() {
                                   )}
                                 </TableCell>
                                 <TableCell>{isBanned ? <Badge variant="destructive" className="gap-1"><Clock className="h-3 w-3" /> Banned</Badge> : <Badge variant="secondary" className="bg-complaintStatus-solved/10 text-complaintStatus-solved">Active</Badge>}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground">{formatDistanceToNow(new Date(user.createdAt!), { addSuffix: true })}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDistanceToNow(new Date(user.createdAt!), { addSuffix: true })}</TableCell>
                                 <TableCell>
                                   {user.id !== currentUser.id && (isBanned ? (
                                     <Button variant="ghost" size="sm" onClick={() => unbanUserMutation.mutate(user.id)} disabled={unbanUserMutation.isPending}>{unbanUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Unban</Button>
@@ -604,7 +685,7 @@ export default function Admin() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {REPORT_TYPES.map((report) => (
                         <Card key={report.key} className="hover:shadow-md transition-shadow">
                           <CardContent className="p-4 space-y-2">
