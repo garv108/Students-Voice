@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,6 +38,8 @@ const submitSchema = z.object({
 
 type SubmitFormData = z.infer<typeof submitSchema>;
 
+const BACKEND_URL = "https://student-complaint-backend.onrender.com";
+
 export default function Submit() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -46,6 +48,14 @@ export default function Submit() {
 
   const [anonymous, setAnonymous] = useState(true);
   const [isPublic, setIsPublic] = useState(true);
+  const [platformMode, setPlatformMode] = useState<string>("normal");
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/maintenance`)
+      .then(res => res.json())
+      .then(data => setPlatformMode(data.mode || "normal"))
+      .catch(() => {});
+  }, []);
 
   const form = useForm<SubmitFormData>({
     resolver: zodResolver(submitSchema),
@@ -69,9 +79,16 @@ export default function Submit() {
         if (response.status === 400 && errorData.warnings !== undefined) {
           throw new Error(errorData.message || "Fake complaint detected");
         }
+        if (response.status === 503) {
+          throw new Error(errorData.message || "Platform is temporarily locked");
+        }
         throw new Error(errorData.message || "Failed to submit complaint");
       }
-      return response.json();
+      const result = await response.json();
+      if (result.maintenance) {
+        throw new Error(result.message || "Complaint saved as draft during maintenance.");
+      }
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
@@ -93,6 +110,25 @@ export default function Submit() {
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {platformMode !== "normal" && (
+          <div className={`mb-6 p-3 rounded-lg border text-sm flex items-start gap-3 ${
+            platformMode === "seize"
+              ? "bg-red-50 border-red-300 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200"
+              : "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
+          }`}>
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                {platformMode === "seize" ? "Platform Locked" : "Maintenance Mode"}
+              </p>
+              <p className="text-sm">
+                {platformMode === "seize"
+                  ? "No new complaints can be submitted at this time."
+                  : "New complaints will be saved as drafts only."}
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight" data-testid="text-page-title">
@@ -158,7 +194,6 @@ export default function Submit() {
                       )}
                     />
 
-                    {/* Anonymous toggle */}
                     <div className="flex items-center gap-3 pt-2">
                       <Checkbox
                         id="anonymous"
@@ -173,7 +208,6 @@ export default function Submit() {
                       Your name will be hidden from the public feed. College administrators may access it if necessary.
                     </p>
 
-                    {/* Public/Private toggle */}
                     <div className="flex items-center gap-3 pt-2">
                       <Checkbox
                         id="isPublic"
@@ -190,15 +224,28 @@ export default function Submit() {
                         : "Your complaint will only be visible to administrators and moderators."}
                     </p>
 
-                    <Button
-                      type="submit"
-                      className="w-full gap-2"
-                      disabled={submitMutation.isPending}
-                      data-testid="button-submit-problem"
-                    >
-                      <Send className="h-4 w-4" />
-                      {submitMutation.isPending ? "Submitting..." : "Submit Problem"}
-                    </Button>
+                    {platformMode !== "seize" && (
+                      <Button
+                        type="submit"
+                        className="w-full gap-2"
+                        disabled={submitMutation.isPending}
+                        data-testid="button-submit-problem"
+                      >
+                        <Send className="h-4 w-4" />
+                        {submitMutation.isPending ? "Submitting..." : "Submit Problem"}
+                      </Button>
+                    )}
+                    {platformMode === "seize" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full gap-2"
+                        disabled
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Submissions Disabled
+                      </Button>
+                    )}
                   </form>
                 </Form>
               </CardContent>

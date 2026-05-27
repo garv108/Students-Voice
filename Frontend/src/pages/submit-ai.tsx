@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";         // <-- NEW
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -38,6 +38,8 @@ interface ComplaintDraft {
 const STORAGE_KEY = "ai_complaint_chat_messages";
 const SpeechRecognition =
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+const BACKEND_URL = "https://student-complaint-backend.onrender.com";
 
 export default function SubmitAI() {
   const { user } = useAuth();
@@ -69,10 +71,11 @@ export default function SubmitAI() {
   const [editingDraft, setEditingDraft] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [similarIssues, setSimilarIssues] = useState<Complaint[] | null>(null);
-  const [anonymous, setAnonymous] = useState(true);            // <-- NEW
+  const [anonymous, setAnonymous] = useState(true);
+  const [isPublic, setIsPublic] = useState(true);
+  const [platformMode, setPlatformMode] = useState<string>("normal");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Voice recognition state
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
@@ -124,6 +127,14 @@ export default function SubmitAI() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, similarIssues]);
 
+  // Fetch platform mode on mount
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/maintenance`)
+      .then(res => res.json())
+      .then(data => setPlatformMode(data.mode || "normal"))
+      .catch(() => {});
+  }, []);
+
   const clearChat = () => {
     setMessages([{ role: "assistant", content: "Hi! I'm here to help you file a complaint. Let's start by describing what happened. Please tell me what the issue is." }]);
     setSufficientInfo(false);
@@ -131,7 +142,8 @@ export default function SubmitAI() {
     setEditingDraft(false);
     setRetryMessage(null);
     setSimilarIssues(null);
-    setAnonymous(true);                                      // reset
+    setAnonymous(true);
+    setIsPublic(true);
     toast({ title: "Chat cleared" });
   };
 
@@ -196,7 +208,6 @@ export default function SubmitAI() {
       }
       setDraft(draft);
       setEditingDraft(true);
-      // Enforce anonymity rules based on AI‑determined category
       if (draft.category === "Harassment" || draft.category === "Discrimination") {
         setAnonymous(false);
       }
@@ -217,11 +228,11 @@ export default function SubmitAI() {
         category: draft.category,
         severity: draft.severity,
         status,
-        anonymous,          // <-- NEW
+        anonymous,
+        isPublic,
       });
       if (!response.ok) {
         const err = await response.json();
-        // Handle fake complaint detection (400 with warnings)
         if (response.status === 400 && err.warnings !== undefined) {
           toast({
             title: err.warnings >= 3 ? "Account Banned" : "Fake Complaint Detected",
@@ -236,12 +247,21 @@ export default function SubmitAI() {
           setLoading(false);
           return;
         }
+        if (response.status === 503) {
+          toast({ title: "Platform Locked", description: err.message, variant: "destructive" });
+          setLoading(false);
+          return;
+        }
         throw new Error(err.message || "Submission failed");
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
-      localStorage.removeItem(STORAGE_KEY);
-      if (status === "pending") toast({ title: "Complaint submitted successfully!" });
-      else toast({ title: "Draft saved!" });
+      const data = await response.json();
+      if (data.maintenance) {
+        toast({ title: "Saved as Draft", description: data.message || "Complaint saved as draft during maintenance." });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+        localStorage.removeItem(STORAGE_KEY);
+        toast({ title: status === "pending" ? "Complaint submitted successfully!" : "Draft saved!" });
+      }
       setLocation("/");
     } catch (error: any) {
       toast({ title: "Submission failed", description: error.message, variant: "destructive" });
@@ -250,7 +270,6 @@ export default function SubmitAI() {
     }
   };
 
-  // Determine if anonymous can be toggled based on category
   const canToggleAnonymous = draft
     ? draft.category !== "Harassment" && draft.category !== "Discrimination"
     : true;
@@ -264,6 +283,25 @@ export default function SubmitAI() {
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
         <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-4 safe-area-top safe-area-bottom">
+          {platformMode !== "normal" && (
+            <div className={`mb-4 p-3 rounded-lg border text-sm flex items-start gap-3 ${
+              platformMode === "seize"
+                ? "bg-red-50 border-red-300 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200"
+                : "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
+            }`}>
+              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">
+                  {platformMode === "seize" ? "Platform Locked" : "Maintenance Mode"}
+                </p>
+                <p className="text-sm">
+                  {platformMode === "seize"
+                    ? "No new complaints can be submitted at this time."
+                    : "New complaints will be saved as drafts only."}
+                </p>
+              </div>
+            </div>
+          )}
           <Card>
             <CardContent className="p-6 space-y-4">
               <h2 className="text-2xl font-bold">Review Your Complaint</h2>
@@ -307,7 +345,6 @@ export default function SubmitAI() {
                   </div>
                 </div>
 
-                {/* Anonymous toggle */}
                 <div className="flex items-center gap-3 pt-2">
                   <Checkbox
                     id="anonymous"
@@ -329,15 +366,41 @@ export default function SubmitAI() {
                     Your name will be hidden from the public feed. College administrators may access it if necessary.
                   </p>
                 )}
+
+                <div className="flex items-center gap-3 pt-2">
+                  <Checkbox
+                    id="isPublic"
+                    checked={isPublic}
+                    onCheckedChange={(checked) => setIsPublic(checked === true)}
+                  />
+                  <label htmlFor="isPublic" className="text-sm font-medium cursor-pointer">
+                    Make public
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {isPublic
+                    ? "Your complaint will be visible to all students and moderators."
+                    : "Your complaint will only be visible to administrators and moderators."}
+                </p>
               </div>
               <div className="flex gap-3 pt-4">
-                <Button onClick={() => submitComplaint("pending")} disabled={loading}>
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Submit Complaint
-                </Button>
-                <Button variant="outline" onClick={() => submitComplaint("draft")} disabled={loading}>
-                  Save as Draft
-                </Button>
+                {platformMode !== "seize" && (
+                  <>
+                    <Button onClick={() => submitComplaint("pending")} disabled={loading}>
+                      {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Submit Complaint
+                    </Button>
+                    <Button variant="outline" onClick={() => submitComplaint("draft")} disabled={loading}>
+                      Save as Draft
+                    </Button>
+                  </>
+                )}
+                {platformMode === "seize" && (
+                  <Button variant="outline" onClick={() => submitComplaint("draft")} disabled={loading}>
+                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Save as Draft
+                  </Button>
+                )}
                 <Button variant="ghost" onClick={() => { setDraft(null); setEditingDraft(false); setSufficientInfo(false); }}>Discard Draft</Button>
               </div>
             </CardContent>
@@ -352,6 +415,24 @@ export default function SubmitAI() {
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
       <main className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-4 py-2 min-h-0 safe-area-top safe-area-bottom">
+        {platformMode !== "normal" && (
+          <div className={`mb-2 p-2 rounded-lg border text-sm flex items-start gap-2 ${
+            platformMode === "seize"
+              ? "bg-red-50 border-red-300 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200"
+              : "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
+          }`}>
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">
+                {platformMode === "seize" ? "Platform Locked" : "Maintenance"}
+              </span>
+              {" — "}
+              {platformMode === "seize"
+                ? "No new complaints can be submitted."
+                : "New complaints will be saved as drafts."}
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-2 flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold">AI‑Assisted Complaint</h1>
