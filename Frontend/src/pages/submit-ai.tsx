@@ -89,10 +89,10 @@ export default function SubmitAI() {
 
     recognition.onstart = () => {
       setListening(true);
-      // auto‑stop after 3 seconds of silence
+      // auto‑stop after 10 seconds of silence
       silenceTimer.current = setTimeout(() => {
         recognition.stop();
-      }, 3000);
+      }, 10000);
     };
 
     recognition.onresult = (event: any) => {
