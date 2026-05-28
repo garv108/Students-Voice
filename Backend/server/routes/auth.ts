@@ -78,22 +78,23 @@ export function registerAuthRoutes(app: Express) {
       // Create username from email (before @)
       const username = email.split('@')[0] + '_' + randomBytes(4).toString('hex');
 
-      const newUser = await storage.createUser({
-        username,
-        email,
-        password: hashedPassword,
-        name: name.trim(),           // FIX: was fullName
-        phone: mobile || undefined,
-        semester: semester ? parseInt(semester) : undefined,
-        branch: branch || undefined,
-        rollNumber: rollNumber || undefined,
-        collegeId: collegeId,
-        department: department || undefined,
-        role: role|| undefined,
-        onboardingCompleted: true,
-        isVerified: true,            // FIX: set true so login never blocks new users
-      });
-
+const newUser = await storage.createUser({
+  username,
+  email,
+  password: hashedPassword,
+  name: name.trim(),
+  phone: mobile || undefined,
+  semester: semester ? parseInt(semester) : undefined,
+  branch: branch || undefined,                  // <-- new
+  rollNumber: rollNumber || undefined,
+  college: college || undefined,                // <-- new (store as text)
+  collegeId: collegeId,
+  department: department || undefined,
+  role: role || undefined,
+  onboardingCompleted: true,
+  isVerified: true,
+  requestedCollege: college === "+ Request your college" ? collegeOther : undefined,   // <-- new
+});
       // FIX: save session to PG store BEFORE responding — prevents race with fetchUser()
       (req as any).session.userId = newUser.id;
       (req as any).session.save((err: any) => {
