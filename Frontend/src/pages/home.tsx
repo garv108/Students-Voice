@@ -28,6 +28,7 @@ import {
   CheckCircle,
   X,
   Quote,
+  ThumbsUp,
 } from "lucide-react";
 import type { Complaint } from "@shared/schema";
 
@@ -68,7 +69,7 @@ export default function Home() {
 
   const { data, isLoading, error } = useQuery<LeaderboardData>({
     queryKey: ["/api/leaderboard"],
-    refetchInterval: 10_000, // ✅ auto-refresh every 10 seconds
+    refetchInterval: 10_000,
   });
 
   const filteredComplaints = useMemo(() => {
@@ -276,12 +277,9 @@ export default function Home() {
                 <div>
                   <h2 className="text-2xl font-semibold">Campus Issues</h2>
                   <p className="text-sm text-muted-foreground">
-                    Sorted by urgency and community reports
+                    Issues affecting many students appear here. Upvote to help them get noticed.
                   </p>
                 </div>
-                <span className="text-sm text-muted-foreground">
-                  {filteredComplaints.length} issue{filteredComplaints.length !== 1 ? 's' : ''}
-                </span>
               </div>
 
               {isLoading ? (
@@ -324,12 +322,11 @@ export default function Home() {
               ) : (
                 <Card className="p-12">
                   <CardContent className="flex flex-col items-center justify-center text-center">
-                    <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">
-                      {hasFilters ? "No matching issues" : "No issues yet"}
-                    </h3>
+                    <ThumbsUp className="h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No popular issues yet</h3>
                     <p className="text-muted-foreground mb-4 max-w-md">
-                      {hasFilters ? "Try adjusting your filters to see more campus issues." : "Be the first to report a campus issue and make a difference!"}
+                      Issues that affect a lot of students will show up here. 
+                      Upvote a complaint to help it get noticed by the authorities, and it will appear on this page.
                     </p>
                     <Link href="/submit-ai">
                       <Button className="gap-2">
