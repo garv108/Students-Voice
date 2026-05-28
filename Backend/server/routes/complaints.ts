@@ -229,28 +229,48 @@ export function registerComplaintRoutes(app: Express) {
     }
   });
 
-  /* LEADERBOARD */
-  app.get("/api/leaderboard", requireCollege, async (req: CollegeRequest, res) => {
-    try {
-      const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
-      const publicComplaints = complaintsData.filter(c => c.isPublic !== false);
-      const sanitized = publicComplaints.map(c => ({
-        ...c,
-        username: c.isAnonymous ? "[Anonymous]" : c.username,
-      }));
-      const stats = {
-        total: sanitized.length,
-        urgent: sanitized.filter(c => c.urgency === 'urgent').length,
-        critical: sanitized.filter(c => c.urgency === 'critical' || c.urgency === 'top_priority').length,
-        emergency: sanitized.filter(c => c.urgency === 'emergency').length,
-        solved: sanitized.filter(c => c.solved).length,
-      };
-      res.json({ complaints: sanitized, stats });
-    } catch (error) {
-      console.error("Leaderboard error:", error);
-      res.status(500).json({ message: "Failed to load leaderboard" });
-    }
-  });
+  /* LEADERBOARD – Popular only */
+app.get("/api/leaderboard", requireCollege, async (req: CollegeRequest, res) => {
+  try {
+    const complaintsData = await storage.getLeaderboardComplaints(req.collegeId!);
+
+    // Filter to public complaints only
+    const publicComplaints = complaintsData.filter(c => c.isPublic !== false);
+
+    // Compute stats from ALL public complaints (for the dashboard widgets)
+    const stats = {
+      total: publicComplaints.length,
+      urgent: publicComplaints.filter(c => c.urgency === 'urgent').length,
+      critical: publicComplaints.filter(c => c.urgency === 'critical' || c.urgency === 'top_priority').length,
+      emergency: publicComplaints.filter(c => c.urgency === 'emergency').length,
+      solved: publicComplaints.filter(c => c.solved).length,
+    };
+
+    // Apply popularity filter: at least 10 likes OR 10 similar complaints, exclude resolved
+    const popular = publicComplaints.filter(
+      c =>
+        !c.solved &&
+        (c.likesCount >= 10 || c.similarComplaintsCount >= 10)
+    );
+
+    // Sort by likes descending, then by similar count
+    popular.sort((a, b) => b.likesCount - a.likesCount || b.similarComplaintsCount - a.similarComplaintsCount);
+
+    // Limit to top 10
+    const top10 = popular.slice(0, 10);
+
+    // Sanitize anonymous usernames
+    const sanitized = top10.map(c => ({
+      ...c,
+      username: c.isAnonymous ? "[Anonymous]" : c.username,
+    }));
+
+    res.json({ complaints: sanitized, stats });
+  } catch (error) {
+    console.error("Leaderboard error:", error);
+    res.status(500).json({ message: "Failed to load leaderboard" });
+  }
+});
 
   /* EXPLORE */
   app.get("/api/complaints/explore", requireCollege, async (req: CollegeRequest, res) => {
