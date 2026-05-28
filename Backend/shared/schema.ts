@@ -71,6 +71,7 @@ export const users = pgTable("users", {
   onboardingCompleted: boolean("onboarding_completed").default(false),
   requestedCollege: text("requested_college"),
   department: text("department"),
+  branch: text("branch"),
   course: text("course"),
 });
 
@@ -241,6 +242,7 @@ export const insertUserSchema = z.object({
   department: z.string().optional(),
   role: z.string().optional(),
   onboardingCompleted: z.boolean().optional(),
+    requestedCollege: z.string().optional(),
 });
 
 export const loginSchema = z.object({
