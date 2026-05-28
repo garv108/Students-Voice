@@ -57,7 +57,7 @@ import {
 import {
   Users, AlertTriangle, Trash2, Pencil, CheckCircle, ShieldAlert, UserX,
   Search, RefreshCw, MessageSquare, Flame, Siren, AlertCircle, Clock,
-  MessageCircle, Loader2, BarChart3, Sparkles, FileDown
+  MessageCircle, Loader2, BarChart3, Sparkles, FileDown, Eye
 } from "lucide-react";
 import type { Complaint, User, AbuseLog } from "@shared/schema";
 
@@ -120,6 +120,9 @@ export default function Admin() {
   // ===== PLATFORM MODE STATE =====
   const [platformMode, setPlatformMode] = useState<string>("normal");
   const [dailyQuote, setDailyQuote] = useState<string>("");
+
+  // ===== USER DETAILS DIALOG STATE =====
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -543,12 +546,15 @@ export default function Admin() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Username</TableHead>
+                            <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
+                            <TableHead>Phone</TableHead>
+                            <TableHead>Roll No.</TableHead>
+                            <TableHead>Semester</TableHead>
+                            <TableHead>Department</TableHead>
                             <TableHead>Role</TableHead>
-                            <TableHead>Warnings</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead>Joined</TableHead>
-                            <TableHead className="w-32">Actions</TableHead>
+                            <TableHead className="w-20">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -558,7 +564,12 @@ export default function Admin() {
                             return (
                               <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.username}</TableCell>
+                                <TableCell>{user.name || "—"}</TableCell>
                                 <TableCell className="text-muted-foreground max-w-[150px] truncate">{user.email}</TableCell>
+                                <TableCell className="text-muted-foreground">{user.phone || "—"}</TableCell>
+                                <TableCell>{user.rollNumber || "—"}</TableCell>
+                                <TableCell>{user.semester ? `Sem ${user.semester}` : "—"}</TableCell>
+                                <TableCell>{user.department || "—"}</TableCell>
                                 <TableCell>
                                   <Select value={user.role} onValueChange={(role) => updateRoleMutation.mutate({ userId: user.id, role })} disabled={user.id === currentUser.id || updateRoleMutation.isPending}>
                                     <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
@@ -566,28 +577,32 @@ export default function Admin() {
                                   </Select>
                                 </TableCell>
                                 <TableCell>
-                                  {warningCount > 0 ? (
-                                    <Badge variant={warningCount >= 3 ? "destructive" : "secondary"}>
-                                      {warningCount} / 3
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-muted-foreground text-sm">0</span>
-                                  )}
+                                  <div className="flex flex-col gap-1">
+                                    {isBanned ? <Badge variant="destructive" className="gap-1"><Clock className="h-3 w-3" /> Banned</Badge> : <Badge variant="secondary" className="bg-complaintStatus-solved/10 text-complaintStatus-solved">Active</Badge>}
+                                    {warningCount > 0 && (
+                                      <Badge variant={warningCount >= 3 ? "destructive" : "outline"} className="text-xs">
+                                        {warningCount} warn
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </TableCell>
-                                <TableCell>{isBanned ? <Badge variant="destructive" className="gap-1"><Clock className="h-3 w-3" /> Banned</Badge> : <Badge variant="secondary" className="bg-complaintStatus-solved/10 text-complaintStatus-solved">Active</Badge>}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDistanceToNow(new Date(user.createdAt!), { addSuffix: true })}</TableCell>
                                 <TableCell>
-                                  {user.id !== currentUser.id && (isBanned ? (
-                                    <Button variant="ghost" size="sm" onClick={() => unbanUserMutation.mutate(user.id)} disabled={unbanUserMutation.isPending}>{unbanUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Unban</Button>
-                                  ) : (
-                                    <div className="flex items-center gap-1">
-                                      <Select value={selectedBanHours?.[user.id] || "48"} onValueChange={(val) => setSelectedBanHours(prev => ({ ...prev, [user.id]: val }))}>
-                                        <SelectTrigger className="w-20 h-8 text-xs"><SelectValue placeholder="48h" /></SelectTrigger>
-                                        <SelectContent><SelectItem value="24">24h</SelectItem><SelectItem value="48">48h</SelectItem><SelectItem value="168">7 days</SelectItem><SelectItem value="720">30 days</SelectItem></SelectContent>
-                                      </Select>
-                                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { const hours = parseInt(selectedBanHours?.[user.id] || "48"); banUserMutation.mutate({ userId: user.id, hours }); }} disabled={banUserMutation.isPending}>{banUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Ban</Button>
-                                    </div>
-                                  ))}
+                                  <div className="flex items-center gap-1">
+                                    <Button variant="ghost" size="icon" onClick={() => setViewingUser(user)} title="View Details">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    {user.id !== currentUser.id && (isBanned ? (
+                                      <Button variant="ghost" size="sm" onClick={() => unbanUserMutation.mutate(user.id)} disabled={unbanUserMutation.isPending}>{unbanUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Unban</Button>
+                                    ) : (
+                                      <div className="flex items-center gap-1">
+                                        <Select value={selectedBanHours?.[user.id] || "48"} onValueChange={(val) => setSelectedBanHours(prev => ({ ...prev, [user.id]: val }))}>
+                                          <SelectTrigger className="w-20 h-8 text-xs"><SelectValue placeholder="48h" /></SelectTrigger>
+                                          <SelectContent><SelectItem value="24">24h</SelectItem><SelectItem value="48">48h</SelectItem><SelectItem value="168">7 days</SelectItem><SelectItem value="720">30 days</SelectItem></SelectContent>
+                                        </Select>
+                                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { const hours = parseInt(selectedBanHours?.[user.id] || "48"); banUserMutation.mutate({ userId: user.id, hours }); }} disabled={banUserMutation.isPending}>{banUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Ban</Button>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -751,6 +766,38 @@ export default function Admin() {
 
       {/* Chat Panel */}
       {chatComplaintId && (<ComplaintChat complaintId={chatComplaintId} onClose={() => setChatComplaintId(null)} />)}
+
+      {/* View User Details Dialog */}
+      <Dialog open={!!viewingUser} onOpenChange={() => setViewingUser(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>User Details</DialogTitle>
+            <DialogDescription>Complete registration information</DialogDescription>
+          </DialogHeader>
+          {viewingUser && (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><span className="text-muted-foreground">Username:</span><br /><span className="font-medium">{viewingUser.username}</span></div>
+              <div><span className="text-muted-foreground">Name:</span><br /><span className="font-medium">{viewingUser.name || "—"}</span></div>
+              <div><span className="text-muted-foreground">Email:</span><br /><span className="font-medium">{viewingUser.email}</span></div>
+              <div><span className="text-muted-foreground">Phone:</span><br /><span className="font-medium">{viewingUser.phone || "—"}</span></div>
+              <div><span className="text-muted-foreground">Roll Number:</span><br /><span className="font-medium">{viewingUser.rollNumber || "—"}</span></div>
+              <div><span className="text-muted-foreground">Semester:</span><br /><span className="font-medium">{viewingUser.semester ? `Semester ${viewingUser.semester}` : "—"}</span></div>
+              <div><span className="text-muted-foreground">Department:</span><br /><span className="font-medium">{viewingUser.department || "—"}</span></div>
+              <div><span className="text-muted-foreground">Course:</span><br /><span className="font-medium">{viewingUser.course || "—"}</span></div>
+              <div><span className="text-muted-foreground">College:</span><br /><span className="font-medium">{viewingUser.college || "—"}</span></div>
+              <div><span className="text-muted-foreground">Role:</span><br /><Badge>{viewingUser.role}</Badge></div>
+              <div><span className="text-muted-foreground">Joined:</span><br /><span className="font-medium">{formatDistanceToNow(new Date(viewingUser.createdAt!), { addSuffix: true })}</span></div>
+              <div className="col-span-2"><span className="text-muted-foreground">Warnings:</span><br /><Badge variant={(viewingUser as any).warnings >= 3 ? "destructive" : "secondary"}>{(viewingUser as any).warnings || 0}</Badge></div>
+              {viewingUser.bannedUntil && new Date(viewingUser.bannedUntil) > new Date() && (
+                <div className="col-span-2"><span className="text-muted-foreground">Banned until:</span><br /><span className="font-medium text-destructive">{new Date(viewingUser.bannedUntil).toLocaleString()}</span></div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingUser(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
