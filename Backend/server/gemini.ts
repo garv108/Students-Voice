@@ -236,7 +236,7 @@ export async function detectAbuseWithAI(text: string): Promise<{
 }
 
 // --------------------------------------------------
-// 6. Fake complaint detection (NEW)
+// 6. Fake complaint detection (facilities)
 // --------------------------------------------------
 export async function detectFakeComplaint(
   text: string,
@@ -286,5 +286,62 @@ Return ONLY valid JSON:
   } catch (error) {
     console.error("❌ Fake complaint detection failed:", error);
     return { isLikelyFake: false };
+  }
+}
+
+// --------------------------------------------------
+// 7. Frivolous complaint detection (NEW)
+// --------------------------------------------------
+export async function detectFrivolousComplaint(
+  text: string
+): Promise<{ isFrivolous: boolean; reason?: string }> {
+  if (!genAI || !process.env.GEMINI_API_KEY) {
+    return { isFrivolous: false };
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+
+    const prompt = `
+You are a complaint validator for a college grievance portal that handles real student issues.
+Read the following submission and determine if it is a **genuine, actionable grievance** or a **frivolous/joke complaint**.
+
+Examples of frivolous complaints:
+- Requests for luxury items (Baskin Robbins, Starbucks, McDonald's, helipad, runway, high-end clothing brands)
+- Demands that are clearly unreasonable or impossible in a college setting
+- Complaints about "low number of female students" with solutions like "build love parks" or "add skincare items"
+- Complaints that are testing the system with absurd demands
+- Obviously sarcastic or humorous content
+
+Examples of genuine complaints:
+- Broken infrastructure (water cooler, WiFi, furniture)
+- Academic concerns (grading, teaching quality)
+- Harassment or discrimination
+- Administrative delays
+- Safety issues
+
+Return ONLY valid JSON:
+{
+  "isFrivolous": true or false,
+  "reason": "Brief explanation if frivolous, or null"
+}
+
+Complaint: "${text.slice(0, 600)}"`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        isFrivolous: parsed.isFrivolous === true,
+        reason: parsed.reason || undefined,
+      };
+    }
+    return { isFrivolous: false };
+  } catch (error) {
+    console.error("❌ Frivolous complaint detection failed:", error);
+    return { isFrivolous: false };
   }
 }

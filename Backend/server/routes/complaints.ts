@@ -1,11 +1,11 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { detectProfanity, getBanExpiration } from "../profanity";
-import { analyzeComplaint, extractKeywords, calculateKeywordOverlap, detectFakeComplaint } from "../gemini";
+import { analyzeComplaint, extractKeywords, calculateKeywordOverlap, detectFakeComplaint, detectFrivolousComplaint } from "../gemini"; // <-- added detectFrivolousComplaint
 import { insertComplaintSchema } from "../../shared/schema";
 import { z } from "zod";
 import { requireCollege, CollegeRequest } from "../middleware/college";
-import { getPlatformMode } from "./admin";                 // <-- NEW
+import { getPlatformMode } from "./admin";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!(req as any).session.userId) {
@@ -50,7 +50,7 @@ export function registerComplaintRoutes(app: Express) {
     async (req: CollegeRequest & { body: any }, res) => {
       try {
         const user = req.user;
-        const mode = getPlatformMode();                    // <-- NEW
+        const mode = getPlatformMode();
 
         if (!user) {
           return res.status(401).json({ message: "User not found" });
@@ -63,7 +63,6 @@ export function registerComplaintRoutes(app: Express) {
           });
         }
 
-        // ---------- Platform mode enforcement ----------
         if (mode === "seize") {
           return res.status(503).json({
             message: "The platform is temporarily locked. No new complaints can be submitted at this time."
@@ -116,7 +115,7 @@ export function registerComplaintRoutes(app: Express) {
           });
         }
 
-        // Fake complaint detection
+        // Fake facility check
         const collegeSettingsData = req.collegeId
           ? await storage.getCollegeSettings(req.collegeId)
           : null;
@@ -142,10 +141,34 @@ export function registerComplaintRoutes(app: Express) {
           });
         }
 
+        // ---- NEW: Frivolous complaint check ----
+        const frivolousCheck = await detectFrivolousComplaint(data.originalText!);
+        if (frivolousCheck.isFrivolous) {
+          const currentWarnings = (user.warnings || 0) + 1;
+          await storage.updateUser(user.id, { warnings: currentWarnings });
+
+          if (currentWarnings >= 3) {
+            const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            await storage.updateUserBan(user.id, thirtyDays);
+            return res.status(403).json({
+              message:
+                "Your complaint appears to be frivolous or not a genuine grievance. Your account has been banned for 30 days due to repeated non‑genuine submissions.",
+              warnings: currentWarnings,
+            });
+          }
+
+          return res.status(400).json({
+            message:
+              "Your complaint does not appear to be a genuine campus grievance. Please review our guidelines. Repeated frivolous submissions will result in a ban.",
+            warnings: currentWarnings,
+            reason: frivolousCheck.reason,
+          });
+        }
+        // ---------------------------------------
+
         const analysis = await analyzeComplaint(data.originalText!);
         const cluster = await storage.getOrCreateCluster(analysis.keywords);
 
-        // In maintenance mode, force draft status
         const finalStatus = (mode === "maintenance") ? "draft" : (data.status || "pending");
 
         const complaint = await storage.createComplaint({
