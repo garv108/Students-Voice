@@ -125,7 +125,9 @@ export default function Home() {
                 <TrendingUp className="h-5 w-5 text-primary" />
                 <span className="text-sm font-medium text-primary">Live Campus Issues Tracker</span>
               </div>
-              <h1 className="text-4xl font-bold tracking-tight">Student's Voice Platform</h1>
+              <h1 className="text-4xl font-bold tracking-tight gradient-text">
+                Student's Voice Platform
+              </h1>
               <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
                 Report campus concerns and track issues that matter most to the student community. 
                 Problems are prioritized by urgency and community reports.
@@ -140,11 +142,11 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <Card className="p-6 text-center min-w-[140px]">
+              <Card className="p-6 text-center min-w-[140px] card-hover">
                 <div className="text-3xl font-bold text-primary" data-testid="stat-total">{stats.total}</div>
                 <div className="text-sm text-muted-foreground">Active Issues</div>
               </Card>
-              <Card className="p-6 text-center min-w-[140px]">
+              <Card className="p-6 text-center min-w-[140px] card-hover">
                 <div className="text-3xl font-bold text-primary">{totalReports}</div>
                 <div className="text-sm text-muted-foreground">Total Reports</div>
               </Card>
@@ -153,7 +155,7 @@ export default function Home() {
 
           {/* Quick Stats Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12">
-            <Card>
+            <Card className="card-hover">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-blue-50">
                   <MessageSquare className="h-5 w-5 text-blue-600" />
@@ -164,7 +166,7 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="card-hover">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-orange-50">
                   <AlertCircle className="h-5 w-5 text-orange-600" />
@@ -175,7 +177,7 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="card-hover">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-red-50">
                   <Flame className="h-5 w-5 text-red-600" />
@@ -186,7 +188,7 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="card-hover">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-md bg-green-50">
                   <CheckCircle className="h-5 w-5 text-green-600" />
